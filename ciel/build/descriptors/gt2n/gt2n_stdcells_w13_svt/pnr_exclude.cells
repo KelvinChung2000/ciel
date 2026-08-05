@@ -1,0 +1,5 @@
+# Neither tap cell has a GDS view in gds/gt2_6t_std_cells_w13_svt.gds, so an
+# instance of either would fail KLayout stream-out. Excluded from PnR as well
+# as synthesis so no step can place one.
+gt2_6t_tapbspdn_w13_svt
+gt2_6t_tapfspdn_w13_svt

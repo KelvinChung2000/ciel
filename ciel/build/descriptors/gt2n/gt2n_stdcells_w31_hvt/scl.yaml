@@ -1,0 +1,73 @@
+meta: {format: 1}
+
+# GT2N HVT standard cells on the 31 nm nanosheet. See ../pdk.yaml for the
+# citation and for a note on this PDK's picosecond liberty.
+
+SCL_POWER_PINS:
+- vdd
+SCL_GROUND_PINS:
+- vss
+
+LIB:
+  nom_tt_0p7v25c:
+  - pdk_dir::lib/tt/gt2_6t_w31_hvt_tt_0p7v25c.lib
+CELL_LEFS:
+- pdk_dir::lef/tt/gt2_6t_w31_hvt.lef
+CELL_GDS:
+- pdk_dir::gds/gt2_6t_std_cells_w31_hvt.gds
+CELL_CDLS:
+- pdk_dir::cdl/gt2_6t_w31_hvt.cdl
+
+PLACE_SITE: gt2_6t
+
+# The library's only filler is one site wide (0.042 um) and its only decap is
+# two (0.084 um).
+FILL_CELLS:
+- gt2_6t_filler_w31_hvt
+DECAP_CELLS:
+- gt2_6t_decapcc_w31_hvt
+CELL_PAD_EXCLUDE:
+- gt2_6t_filler_w31_hvt
+- gt2_6t_decapcc_w31_hvt
+- gt2_6t_tapbspdn_w31_hvt
+- gt2_6t_tapfspdn_w31_hvt
+
+# WELLTAP_CELL and ENDCAP_CELL are deliberately unset. The library's two tap
+# cells, gt2_6t_tapbspdn and gt2_6t_tapfspdn, exist in the LEF and the liberty
+# but have no GDS: gds/gt2_6t_std_cells_*.gds carries a single gt2_6t_tap cell
+# under a name neither abstract uses. Placing either would make KLayout
+# stream-out fail on a missing cell, so this library does not place taps at
+# all, and RUN_TAP_ENDCAP_INSERTION should be false. (lambdapdk hits the same
+# wall from the other side and papers over it with
+# add_klayout_allowmissingcell.) Both tap cells are in pnr_exclude.cells so
+# nothing else can instantiate them either.
+#
+# DIODE_CELL is unset because the 72-cell library has no antenna diode.
+
+SYNTH_DRIVING_CELL: gt2_6t_buf_x4_w31_hvt/Y
+SYNTH_CLK_DRIVING_CELL: gt2_6t_buf_x8_w31_hvt/Y
+SYNTH_BUFFER_CELL: gt2_6t_buf_x1_w31_hvt/A/Y
+SYNTH_TIEHI_CELL: gt2_6t_tiehigh_w31_hvt/Y
+SYNTH_TIELO_CELL: gt2_6t_tielow_w31_hvt/Y
+SYNTH_EXCLUDED_CELL_FILE: pdk_dir::libs.tech/librelane/gt2n_stdcells_w31_hvt/synth_exclude.cells
+PNR_EXCLUDED_CELL_FILE: pdk_dir::libs.tech/librelane/gt2n_stdcells_w31_hvt/pnr_exclude.cells
+
+CTS_ROOT_BUFFER: gt2_6t_buf_x12_w31_hvt
+CTS_CLK_BUFFERS:
+- gt2_6t_buf_x8_w31_hvt
+- gt2_6t_buf_x4_w31_hvt
+- gt2_6t_buf_x2_w31_hvt
+
+GPL_CELL_PADDING: 1
+DPL_CELL_PADDING: 0
+
+# Nanoseconds, as documented -- 20 ps of uncertainty, 10 ps of clock slew and
+# a 50 ps transition ceiling, which is the scale a 2 nm library switches at.
+CLOCK_UNCERTAINTY_CONSTRAINT: 0.02
+CLOCK_TRANSITION_CONSTRAINT: 0.01
+DEFAULT_MAX_TRAN: 0.05
+TIME_DERATING_CONSTRAINT: 5
+IO_DELAY_CONSTRAINT: 20
+MAX_FANOUT_CONSTRAINT: 20
+# fF: four gt2_6t_buf_x1 input pins (0.0004555 pF each).
+OUTPUT_CAP_LOAD: 1.822

@@ -1,0 +1,281 @@
+# GT2N: an open-source virtual 2nm nanosheet (GAAFET) PDK with backside power
+# delivery, from Georgia Tech.
+#
+# If you use this PDK for published work, the authors ask that you cite:
+#
+#   D. Jang, P. Kumar, M. N. H. Shazon, S. J. Ram, A. Svizhenko, V. Moroz,
+#   A. Ceyhan, N. A. Radhakrishn, and A. Naeemi, "GT2N: An Open-Source 2nm
+#   Nanosheet PDK Enabling Multi-Width/VT Benchmarking," in IEEE International
+#   Symposium on Circuits and Systems (ISCAS) 2026.
+#
+# PDK data: https://github.com/azadnaeemi/GT2N (BSD 3-Clause).
+# Tool setup (KLayout views, pdngen/tapcell Tcl) is vendored from
+# siliconcompiler/lambdapdk under lambdapdk/ in this tree.
+#
+# ---------------------------------------------------------------------------
+# A note on units
+# ---------------------------------------------------------------------------
+# Every GT2N liberty file declares `time_unit : 1ps`, and OpenSTA takes its
+# command units from the first liberty it reads. That used to mean the SDC
+# numbers LibreLane wrote were read as picoseconds by the PnR scripts and as
+# nanoseconds by the signoff ones, because only the latter pinned units.
+# LibreLane now pins `set_cmd_units` in scripts/openroad/common/io.tcl, so
+# every session reads configuration values in their documented units whatever
+# the liberty declares.
+#
+# The time-valued numbers below are therefore nanoseconds, like any other
+# PDK's. They are simply small: this library's clock uncertainty is 0.02 ns
+# where a 130 nm library's is 0.25.
+# ---------------------------------------------------------------------------
+meta:
+  format: 1
+  family: gt2n
+  variant: gt2n
+  scls:
+  - gt2n_stdcells_w13_elvt
+  - gt2n_stdcells_w13_hvt
+  - gt2n_stdcells_w13_lvt
+  - gt2n_stdcells_w13_svt
+  - gt2n_stdcells_w13_ulvt
+  - gt2n_stdcells_w31_elvt
+  - gt2n_stdcells_w31_hvt
+  - gt2n_stdcells_w31_lvt
+  - gt2n_stdcells_w31_svt
+  - gt2n_stdcells_w31_ulvt
+  dbu_per_micron: 2000
+  gds_scale: 1
+  # No Magic tech file, no Netgen setup, and no open-source DRC/LVS rule deck:
+  # GT2N ships Synopsys IC Validator runsets only (icv_runset/). Gate
+  # RUN_MAGIC_DRC, RUN_KLAYOUT_DRC, RUN_LVS and RUN_MAGIC_STREAMOUT off in the
+  # design/flow configuration.
+  capabilities: [rcx]
+
+STD_CELL_LIBRARY: gt2n_stdcells_w31_lvt
+
+# Cell power/ground pins are lowercase in both the LEF and the liberty
+# voltage_map, and they sit on BPR -- the backside power rail.
+VDD_PIN: vdd
+GND_PIN: vss
+
+# The full stack, in which the backside layers (BRDL, BM4..BM1, BPR) are
+# TYPE ROUTING and therefore usable by pdngen. techlib/gt2_fspdn_tech.lef is
+# the alternative frontside-only view, in which BPR is MASTERSLICE; it cannot
+# be used here, because the standard cells have no frontside power pins for a
+# followpins rail to attach to.
+TECH_LEFS:
+  "*": pdk_dir::techlib/gt2_tech.lef
+
+PRIMARY_GDSII_STREAMOUT_TOOL: klayout
+KLAYOUT_TECH: pdk_dir::lambdapdk/base/setup/klayout/gt2n.lyt
+KLAYOUT_PROPERTIES: pdk_dir::lambdapdk/base/setup/klayout/gt2n.lyp
+# KLAYOUT_DEF_LAYER_MAP is deliberately unset: gt2n.lyt already carries the
+# LEF/DEF layer map inline, and passing --lym would clear it.
+
+# One corner. The GT2N release notes describe three process corners as "under
+# development"; only tt is characterised today, at 0.7 V / 25 C.
+DEFAULT_CORNER: nom_tt_0p7v25c
+STA_CORNERS:
+- nom_tt_0p7v25c
+TIMING_VIOLATION_CORNERS:
+- "*tt*"
+
+# M0 is the intra-cell layer (the cells' own OBS shapes live there) and cell
+# signal pins are on M1. M10 upward are power/redistribution-scale pitches.
+RT_MIN_LAYER: M1
+RT_MAX_LAYER: M9
+
+IO_PIN_H_LAYER: M2
+IO_PIN_V_LAYER: M3
+
+FP_TRACKS_INFO: pdk_dir::libs.tech/librelane/tracks.info
+
+# Ordered as the technology LEF declares its ROUTING layers, which puts the six
+# backside layers first: BRDL BM4 BM3 BM2 BM1 BPR M0 M1..M13 RDL.
+GRT_LAYER_ADJUSTMENTS:
+- 0.25
+- 0.25
+- 0.25
+- 0.5
+- 0.5
+- 0.75
+- 0.75
+- 0.5
+- 0.5
+- 0.5
+- 0.5
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+
+SIGNAL_WIRE_RC_LAYERS:
+- M1
+CLOCK_WIRE_RC_LAYERS:
+- M3
+
+# -------------------------------------------------------------------------
+# Backside power delivery network
+# -------------------------------------------------------------------------
+# Standard-cell vdd/vss pins are BPR shapes, so the followpins rail is on BPR
+# and the mesh is the backside BM1 (vertical) / BM2 (horizontal) pair, matching
+# lambdapdk's pdngen.tcl for this library. gt2_tech.lef defines the BV0
+# (BPR-BM1) and BV1 (BM1-BM2) vias the connects need.
+#
+# The one part of GT2N's backside stack this does not reach is BM3/BM4/BRDL,
+# the wide backside distribution and redistribution layers that would carry
+# power in from outside the core. LibreLane's PDN step models a single mesh
+# pair plus an optional core ring, so a third backside tier has no variable to
+# live in; a design needing it must supply its own grid.
+#
+# WARNING: a design that keeps these values cannot be detail-routed by
+# OpenROAD. pdngen builds the grid correctly and check_power_grid is clean, and
+# then `detailed_route` segfaults in drt::FlexTAWorker::initFixedObjs as soon as
+# track assignment reaches a backside layer carrying any of the geometry --
+# rails, straps or BV vias alike; DRT registers default vias for V1 upward and
+# none for BV0..BV4, and assigns tracks on backside layers regardless of
+# `set_routing_layers`. The values stay here because they are what GT2N's power
+# grid is, and because the floorplan and power-grid steps do produce it. A
+# design that has to route overrides them with a frontside mesh and
+# PDN_ENABLE_RAILS: false, which is the same compromise the GT2N authors' own
+# OpenROAD package makes in its gt2n_compat_bspdn_proxy platform; LibreLane's
+# worked example of that is librelane/examples/spm/gt2n.yaml.
+PDN_RAIL_LAYER: BPR
+PDN_RAIL_WIDTH: 0.032
+PDN_RAIL_OFFSET: 0
+PDN_VERTICAL_LAYER: BM1
+PDN_VWIDTH: 0.224
+PDN_VSPACING: 0.112
+PDN_VPITCH: 1.792
+PDN_VOFFSET: 0.896
+PDN_HORIZONTAL_LAYER: BM2
+PDN_HWIDTH: 0.448
+PDN_HSPACING: 0.112
+PDN_HPITCH: 1.792
+PDN_HOFFSET: 0.896
+PDN_CORE_RING_VWIDTH: 0.896
+PDN_CORE_RING_HWIDTH: 0.896
+PDN_CORE_RING_VSPACING: 0.224
+PDN_CORE_RING_HSPACING: 0.224
+PDN_CORE_RING_VOFFSET: 0.448
+PDN_CORE_RING_HOFFSET: 0.448
+
+# -------------------------------------------------------------------------
+# Parasitics
+# -------------------------------------------------------------------------
+# Derived from GT2.itf / GT2.ict by the GT2N authors' OpenROAD example
+# (setRC_full.tcl), converted from its ohm/um to LibreLane's kOhm/um. These are
+# a first-order geometric model, not calibrated extraction: good enough to
+# drive the resizer, not signoff-quality.
+LAYERS_RC:
+  "*":
+    BPR:
+      res: 0.0279994
+      cap: 0.0000677746
+    BM1:
+      res: 0.00748214
+      cap: 0.000142819
+    BM2:
+      res: 0.00748214
+      cap: 0.0000940758
+    BM3:
+      res: 0.000638889
+      cap: 0.000049348
+    BM4:
+      res: 0.000638889
+      cap: 0.000049348
+    BRDL:
+      res: 0.00000625
+      cap: 0.0000717052
+    M0:
+      res: 0.62175
+      cap: 0.0000903127
+    M1:
+      res: 0.4375
+      cap: 0.0000903127
+    M2:
+      res: 0.62175
+      cap: 0.0000903127
+    M3:
+      res: 0.4375
+      cap: 0.0000903127
+    M4:
+      res: 0.166952
+      cap: 0.0000940758
+    M5:
+      res: 0.166952
+      cap: 0.0000940758
+    M6:
+      res: 0.0265526
+      cap: 0.0000940758
+    M7:
+      res: 0.0265526
+      cap: 0.0000940758
+    M8:
+      res: 0.0265526
+      cap: 0.0000940758
+    M9:
+      res: 0.0265526
+      cap: 0.0000940758
+    M10:
+      res: 0.00748214
+      cap: 0.0000940758
+    M11:
+      res: 0.00748214
+      cap: 0.0000940758
+    M12:
+      res: 0.000638889
+      cap: 0.000049348
+    M13:
+      res: 0.000638889
+      cap: 0.000049348
+    RDL:
+      res: 0.00000625
+      cap: 0.0000846682
+VIAS_R:
+  "*":
+    V0:
+      res: 0.05499
+    V1:
+      res: 0.05499
+    V2:
+      res: 0.05499
+    V3:
+      res: 0.04578
+    V4:
+      res: 0.02780
+    V5:
+      res: 0.01489
+    V6:
+      res: 0.01326
+    V7:
+      res: 0.01326
+    V8:
+      res: 0.01326
+    V9:
+      res: 0.00765
+    V10:
+      res: 0.00608
+    V11:
+      res: 0.00608
+    V12:
+      res: 0.00095
+    V13:
+      res: 0.00015
+    BV0:
+      res: 0.02510
+    BV1:
+      res: 0.00608
+    BV2:
+      res: 0.00608
+    BV3:
+      res: 0.00095
+    BV4:
+      res: 0.00015
+RCX_RULESETS:
+  "*": pdk_dir::libs.tech/librelane/gt2n_rcx_patterns.rules

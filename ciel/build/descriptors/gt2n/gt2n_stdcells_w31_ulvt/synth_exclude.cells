@@ -1,0 +1,7 @@
+# Cells with no logic function, kept out of the synthesis liberty so that
+# nothing can map onto them. Fill and decap insertion places them from the LEF
+# and does not need them here.
+gt2_6t_filler_w31_ulvt
+gt2_6t_decapcc_w31_ulvt
+gt2_6t_tapbspdn_w31_ulvt
+gt2_6t_tapfspdn_w31_ulvt

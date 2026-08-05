@@ -62,6 +62,14 @@ LAMBDAPDK_PATH = os.path.join("lambdapdk", "gt2n")
 #     pdk_rev = '54f81feb2b9c334d283538c1bc91bf3a34b02c02'
 PDK_REV_RX = re.compile(r"^pdk_rev\s*=\s*['\"]([0-9a-fA-F]{7,40})['\"]", re.MULTILINE)
 
+# GT2N's LibreLane descriptors, which ship with ciel rather than with the PDK:
+# neither upstream repository is in the open_pdks format and neither knows what
+# a pdk.yaml is. Copied into the variant's libs.tech/librelane so that an
+# installed gt2n is configured for LibreLane the moment it is fetched. One
+# descriptor directory per (nanosheet width, VT) flavour, beside the shared
+# track grid and the OpenRCX pattern file.
+DESCRIPTOR_PATH = os.path.join(os.path.dirname(__file__), "descriptors", "gt2n")
+
 
 def get_data_commit(lambdapdk_path: str) -> str:
     module = os.path.join(lambdapdk_path, LAMBDAPDK_PATH, "__init__.py")
@@ -145,6 +153,13 @@ def build_gt2n(build_directory, lambdapdk_path, gt2n_path):
     )
 
     make_descriptor_dir(variant_directory, "gt2n")
+    # Merged into the directory make_descriptor_dir just made, rather than
+    # replacing it, so the README it wrote survives beside the descriptors.
+    shutil.copytree(
+        DESCRIPTOR_PATH,
+        os.path.join(variant_directory, "libs.tech", "librelane"),
+        dirs_exist_ok=True,
+    )
 
 
 def install_gt2n(build_directory, pdk_root, version):
