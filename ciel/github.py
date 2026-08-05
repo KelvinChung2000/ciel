@@ -72,6 +72,18 @@ asap7_repo = RepoInfo(
     os.getenv("ASAP7_REPO_NAME", "asap7"),
 )
 
+lambdapdk_repo = RepoInfo(
+    os.getenv("LAMBDAPDK_REPO_OWNER", "siliconcompiler"),
+    os.getenv("LAMBDAPDK_REPO_NAME", "lambdapdk"),
+)
+
+# lambdapdk carries gt2n's tool setup but not its data, which lives here. The
+# commit to take it at is the one lambdapdk names, so there is nothing to pin.
+gt2n_repo = RepoInfo(
+    os.getenv("GT2N_REPO_OWNER", "azadnaeemi"),
+    os.getenv("GT2N_REPO_NAME", "GT2N"),
+)
+
 
 class GitHubSession(httpx.Client):
     class Token(object):

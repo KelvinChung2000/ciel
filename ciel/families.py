@@ -14,7 +14,14 @@
 from dataclasses import dataclass
 from typing import Iterable, List, Dict, Optional, Set, ClassVar
 
-from .github import RepoInfo, opdks_repo, ihp_repo, orfs_repo, asap7_repo
+from .github import (
+    RepoInfo,
+    opdks_repo,
+    ihp_repo,
+    orfs_repo,
+    asap7_repo,
+    lambdapdk_repo,
+)
 
 
 @dataclass
@@ -147,5 +154,25 @@ Family.by_name["asap7"] = Family(
         "asap7_sram_0p0",
     ],
     repo=asap7_repo,
+    monolithic=True,
+)
+# The version is a lambdapdk commit, which is also what decides the commit of
+# the GT2N data repository the build pairs it with.
+Family.by_name["gt2n"] = Family(
+    name="gt2n",
+    variants=["gt2n"],
+    all_libraries=[
+        "gt2_6t_w13_elvt",
+        "gt2_6t_w13_hvt",
+        "gt2_6t_w13_lvt",
+        "gt2_6t_w13_svt",
+        "gt2_6t_w13_ulvt",
+        "gt2_6t_w31_elvt",
+        "gt2_6t_w31_hvt",
+        "gt2_6t_w31_lvt",
+        "gt2_6t_w31_svt",
+        "gt2_6t_w31_ulvt",
+    ],
+    repo=lambdapdk_repo,
     monolithic=True,
 )
