@@ -1,0 +1,118 @@
+# asap7sc7p5t_28, RVT flavour: the 7.5-track standard cell library ASAP7
+# ships and the one OpenROAD-flow-scripts defaults to. The library's four
+# threshold flavours (R = RVT, L = LVT, SL = SLVT, SRAM) live in one LEF/GDS
+# per flavour, so each is its own SCL here rather than a variant of one.
+#
+# Everything below uses the 1x drawn views; see the scaling note in
+# ../pdk.yaml.
+meta:
+  format: 1
+
+CELL_LEFS:
+- pdk_dir::asap7sc7p5t_28/LEF/asap7sc7p5t_28_R_1x_220121a.lef
+CELL_GDS:
+- pdk_dir::asap7sc7p5t_28/GDS/asap7sc7p5t_28_R_220121a.gds
+CELL_CDLS:
+- pdk_dir::asap7sc7p5t_28/CDL/LVS/asap7sc7p5t_28_R.cdl
+CELL_VERILOG_MODELS:
+- pdk_dir::asap7sc7p5t_28/Verilog/asap7sc7p5t_AO_RVT_TT_201020.v
+- pdk_dir::asap7sc7p5t_28/Verilog/asap7sc7p5t_INVBUF_RVT_TT_201020.v
+- pdk_dir::asap7sc7p5t_28/Verilog/asap7sc7p5t_OA_RVT_TT_201020.v
+- pdk_dir::asap7sc7p5t_28/Verilog/asap7sc7p5t_SEQ_RVT_TT_220101.v
+- pdk_dir::asap7sc7p5t_28/Verilog/asap7sc7p5t_SIMPLE_RVT_TT_201020.v
+
+# Upstream ships the liberty as .7z archives, which nothing in the flow can
+# read, and splits each corner across five files by cell group (AO, INVBUF,
+# OA, SEQ, SIMPLE). The build unpacks them and concatenates each corner into
+# the single file named here.
+#
+# The concatenation is not cosmetic. Every other PDK LibreLane ships gives one
+# liberty per corner, so five is a path nothing else exercises, and Yosys loses
+# a whole library on the way into ABC's merged .scl: a merge that had been
+# carrying 106 cells came out with 75, the entire INVBUF group missing, which
+# left ABC with no inverter and no buffer ("genlib library reader cannot detect
+# the invertor gate") and segfaulted its mapper. One library per corner is both
+# the shape the rest of the flow expects and the shape that cannot lose a file.
+#
+# The five merge cleanly: they share one set of units and operating conditions,
+# and their lookup-table templates are either byte-identical across files or
+# unique to one, so nothing is redefined. NLDM only -- the CCS characterization
+# is another 6.4 GiB and is not part of this build.
+LIB:
+  nom_tt_0p70V_25C:
+  - pdk_dir::libs.tech/librelane/asap7sc7p5t_28_rvt/lib/asap7sc7p5t_RVT_TT_nldm.lib
+  nom_ff_0p70V_25C:
+  - pdk_dir::libs.tech/librelane/asap7sc7p5t_28_rvt/lib/asap7sc7p5t_RVT_FF_nldm.lib
+  nom_ss_0p63V_100C:
+  - pdk_dir::libs.tech/librelane/asap7sc7p5t_28_rvt/lib/asap7sc7p5t_RVT_SS_nldm.lib
+
+TIMING_VIOLATION_CORNERS:
+- '*tt*'
+
+SCL_POWER_PINS:
+- VDD
+SCL_GROUND_PINS:
+- VSS
+
+PLACE_SITE: asap7sc7p5t
+FP_TRACKS_INFO: pdk_dir::libs.tech/librelane/asap7sc7p5t_28_rvt/tracks.info
+
+# ORFS's DONT_USE_CELLS for this platform: the fractional-drive cells
+# (*x1p*, *xp*) ease congestion, and the scan flops and clock gates are
+# unusable without a scan/CG flow. TAPCELL_WITH_FILLER is added here because
+# the tap insertion step places TAPCELL itself.
+PNR_EXCLUDED_CELL_FILE: pdk_dir::libs.tech/librelane/asap7sc7p5t_28_rvt/pnr_exclude.cells
+SYNTH_EXCLUDED_CELL_FILE: pdk_dir::libs.tech/librelane/asap7sc7p5t_28_rvt/synth_exclude.cells
+
+SYNTH_DRIVING_CELL: BUFx2_ASAP7_75t_R/Y
+SYNTH_CLK_DRIVING_CELL: BUFx4_ASAP7_75t_R/Y
+SYNTH_BUFFER_CELL: BUFx2_ASAP7_75t_R/A/Y
+SYNTH_TIEHI_CELL: TIEHIx1_ASAP7_75t_R/H
+SYNTH_TIELO_CELL: TIELOx1_ASAP7_75t_R/L
+
+CTS_ROOT_BUFFER: BUFx4_ASAP7_75t_R
+CTS_CLK_BUFFERS:
+- BUFx2_ASAP7_75t_R
+- BUFx3_ASAP7_75t_R
+- BUFx4_ASAP7_75t_R
+- BUFx8_ASAP7_75t_R
+
+WELLTAP_CELL: TAPCELL_ASAP7_75t_R
+ENDCAP_CELL: TAPCELL_ASAP7_75t_R
+
+FILL_CELLS:
+- FILLER_ASAP7_75t_R
+- FILLERxp5_ASAP7_75t_R
+DECAP_CELLS:
+- DECAPx1_ASAP7_75t_R
+- DECAPx2_ASAP7_75t_R
+- DECAPx4_ASAP7_75t_R
+- DECAPx6_ASAP7_75t_R
+- DECAPx10_ASAP7_75t_R
+CELL_PAD_EXCLUDE:
+- FILLER*_ASAP7*
+- DECAP*_ASAP7*
+- TAPCELL*_ASAP7*
+
+TRISTATE_CELLS: []
+
+GPL_CELL_PADDING: 0
+DPL_CELL_PADDING: 0
+
+# Rails follow the cells' M1 power pins: 0.018 um wide, centred on the row
+# boundary.
+PDN_RAIL_WIDTH: 0.018
+
+# Nanoseconds -- see the note on DEFAULT_MAX_TRAN in ../pdk.yaml for why the
+# PDK's own picoseconds do not reach here. 10 ps of uncertainty and a 15 ps
+# clock transition are the scale a sub-nanosecond clock wants.
+CLOCK_UNCERTAINTY_CONSTRAINT: 0.01
+CLOCK_TRANSITION_CONSTRAINT: 0.015
+TIME_DERATING_CONSTRAINT: 5
+IO_DELAY_CONSTRAINT: 20
+MAX_FANOUT_CONSTRAINT: 10
+
+# Femtofarads -- this one variable is documented in fF and divided by 1000 on
+# its way into set_load, unlike the picofarad LAYERS_RC above. The value is
+# ORFS' ABC_LOAD_IN_FF for this platform: BUFx2's A pin, 0.9747 fF, times 4.
+OUTPUT_CAP_LOAD: 3.898

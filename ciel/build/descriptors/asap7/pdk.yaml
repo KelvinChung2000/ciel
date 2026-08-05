@@ -1,0 +1,200 @@
+# ASAP7 -- 7nm predictive PDK from Arizona State University.
+#
+# Scaling: the 1x views throughout. ASAP7 ships two drawn scales -- the true
+# 1x geometry (techlef_misc/asap7_tech_1x_201209.lef, LEF/*_1x_*.lef) and a
+# 4x blow-up (techlef_misc/asap7_tech_4x_201209.lef, LEF/scaled/*_4x_*.lef)
+# that exists because some tools could not represent a 0.25 nm grid. The 1x
+# tech LEF declares DATABASE MICRONS 1000, which resolves every 1x dimension
+# in the library exactly (the finest is 0.009 um), so the blow-up buys
+# nothing here. Choosing it also keeps GDS honest: only 1x cell GDS ships
+# (GDS/*.gds is drawn at the 0.25 nm grid the .lyt declares), so a 4x
+# abstract would place 1x layouts on a 4x grid and the stream-out would be
+# meaningless without a matching cell-GDS blow-up this PDK does not contain.
+# Consequently meta.gds_scale is 1 -- no post-stream-out downscale is needed
+# and the GDS is dimensionally correct as written. This matches current
+# OpenROAD-flow-scripts, whose asap7 platform sets TECH_LEF and SC_LEF to the
+# 1x files.
+#
+# meta.dbu_per_micron below is the LEF/DEF database, 1000, from the tech LEF's
+# DATABASE MICRONS. It is not the GDS grid: the .lyt declares 0.00025 um and
+# a streamed-out design comes back with UNITS 4000/um, because that is what
+# the cell GDS is drawn on. The two differ on this PDK and neither is a
+# scaling factor.
+#
+# No open-source DRC/LVS decks exist for ASAP7 (Calibre only), and there is
+# no Magic tech file or Netgen setup. Stream-out is therefore KLayout's, and
+# a flow spec using this PDK must gate the Magic and Netgen steps off.
+meta:
+  format: 1
+  family: asap7
+  variant: asap7
+  scls:
+  - asap7sc7p5t_28_rvt
+  dbu_per_micron: 1000
+  gds_scale: 1
+  capabilities: [rcx]
+
+STD_CELL_LIBRARY: asap7sc7p5t_28_rvt
+
+VDD_PIN: VDD
+GND_PIN: VSS
+
+TECH_LEFS:
+  nom_*: pdk_dir::asap7sc7p5t_28/techlef_misc/asap7_tech_1x_201209.lef
+  min_*: pdk_dir::asap7sc7p5t_28/techlef_misc/asap7_tech_1x_201209.lef
+  max_*: pdk_dir::asap7sc7p5t_28/techlef_misc/asap7_tech_1x_201209.lef
+
+# KLayout is the only stream-out this PDK can offer: no Magic tech file
+# exists for ASAP7.
+PRIMARY_GDSII_STREAMOUT_TOOL: klayout
+
+# Vendored from OpenROAD-flow-scripts' asap7 platform, with the two
+# ORFS-specific path settings (base-path, lef-files) repointed at this tree.
+# The .lyt carries its own LEF/DEF layer map, so KLAYOUT_DEF_LAYER_MAP stays
+# unset and that embedded map is what KLayout uses.
+KLAYOUT_TECH: pdk_dir::libs.tech/librelane/klayout/asap7.lyt
+KLAYOUT_PROPERTIES: pdk_dir::libs.tech/librelane/klayout/asap7.lyp
+
+# Keyed the same way TECH_LEFS is, not with '*': OpenROAD.RCX looks a tech LEF
+# up by the ruleset's own corner pattern, so a ruleset key that no TECH_LEFS
+# key matches extracts nothing and leaves the flow with no SPEF.
+RCX_RULESETS:
+  nom_*: pdk_dir::libs.tech/librelane/openroad/rcx_patterns.rules
+  min_*: pdk_dir::libs.tech/librelane/openroad/rcx_patterns.rules
+  max_*: pdk_dir::libs.tech/librelane/openroad/rcx_patterns.rules
+
+# ASAP7's liberty is characterized at a single voltage/temperature per
+# process corner: TT and FF are both 0.70 V / 25 C (upstream characterizes
+# the fast process at nominal PVT), SS is 0.63 V / 100 C.
+DEFAULT_CORNER: nom_tt_0p70V_25C
+STA_CORNERS:
+- nom_tt_0p70V_25C
+- nom_ff_0p70V_25C
+- nom_ss_0p63V_100C
+
+# Routing: M2..M7, as ORFS does. M1 is the standard-cell rail and pin layer,
+# M8/M9/Pad are the thick top layers.
+RT_MIN_LAYER: M2
+RT_MAX_LAYER: M7
+
+# Nanoseconds, like every other PDK's. ASAP7's liberty is denominated in
+# picoseconds and femtofarads (time_unit : "1ps", capacitive_load_unit
+# (1,ff)), and OpenSTA takes a session's units from the first read_liberty --
+# but common/io.tcl re-pins ns/pF after the liberty reads, so what a
+# descriptor writes is read in ns/pF here as anywhere. 0.16 ns is the largest
+# characterized input slew, 160 ps in the liberty's own units.
+DEFAULT_MAX_TRAN: 0.16
+
+IO_PIN_H_LAYER: M4
+IO_PIN_V_LAYER: M5
+
+# Every ASAP7 routing layer carries LEF58_RECTONLY, so a pin shape wider than
+# the wire that lands on it is a violation the detailed router cannot repair:
+# the pin and the wire union into a T, and 108 of those survived every
+# search-and-repair pass the first time this PDK was run. Pins are therefore
+# one wire wide rather than the default two, and long enough to satisfy the
+# layers' 0.002 um^2 minimum area at that width -- 0.002 / 0.024, rounded up
+# to the 0.001 um manufacturing grid. M4 and M5 have identical width and area
+# rules, hence the identical values.
+IO_PIN_H_THICKNESS_MULT: 1
+IO_PIN_V_THICKNESS_MULT: 1
+IO_PIN_H_LENGTH: 0.084
+IO_PIN_V_LENGTH: 0.084
+
+# One entry per routing layer in tech-LEF order (M1..M9, Pad). ORFS derates
+# the routed layers by 0.25 and leaves M1 and the top layers alone.
+GRT_LAYER_ADJUSTMENTS:
+- 0.00
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.00
+- 0.00
+- 0.00
+
+# ORFS grid_strategy-M1-M2-M5-M6: M1 followpin rails, M5 vertical straps,
+# M6 horizontal straps. ORFS additionally puts followpins on M2; the cells'
+# power pins are M1-only, so the M1 rails alone connect them and pdngen
+# stacks M1->M5 vias.
+PDN_RAIL_LAYER: M1
+PDN_RAIL_OFFSET: 0
+PDN_VERTICAL_LAYER: M5
+PDN_VWIDTH: 0.12
+PDN_VSPACING: 0.072
+PDN_VPITCH: 5.4
+PDN_VOFFSET: 0.3
+PDN_HORIZONTAL_LAYER: M6
+PDN_HWIDTH: 0.288
+PDN_HSPACING: 0.096
+PDN_HPITCH: 5.4
+PDN_HOFFSET: 0.513
+PDN_CORE_RING_VWIDTH: 0.288
+PDN_CORE_RING_VSPACING: 0.096
+PDN_CORE_RING_VOFFSET: 0.3
+PDN_CORE_RING_HWIDTH: 0.288
+PDN_CORE_RING_HSPACING: 0.096
+PDN_CORE_RING_HOFFSET: 0.3
+
+# ORFS tapcell.tcl: -distance 25.
+FP_TAPCELL_DIST: 25
+
+# ORFS setRC.tcl. LibreLane's standard units are kOhm/um and pF/um whatever
+# the liberty declares, and ASAP7's liberty is in kohm and fF -- the
+# resistances carry over unchanged, the capacitances are ORFS's divided by
+# 1000. M1's capacitance is upstream's placeholder.
+LAYERS_RC:
+  '*':
+    M1:
+      res: 0.0704175
+      cap: 0.0000000000001
+    M2:
+      res: 0.0297127
+      cap: 0.000174942
+    M3:
+      res: 0.0312870
+      cap: 0.000155554
+    M4:
+      res: 0.0180365
+      cap: 0.000178475
+    M5:
+      res: 0.0189935
+      cap: 0.000164264
+    M6:
+      res: 0.0118796
+      cap: 0.000187426
+    M7:
+      res: 0.0125096
+      cap: 0.000162979
+    M8:
+      res: 0.00844765
+      cap: 0.000103962
+    M9:
+      res: 0.00889556
+      cap: 0.0000928446
+VIAS_R:
+  '*':
+    V1:
+      res: 0.0172
+    V2:
+      res: 0.0172
+    V3:
+      res: 0.0172
+    V4:
+      res: 0.0118
+    V5:
+      res: 0.0118
+    V6:
+      res: 0.0082
+    V7:
+      res: 0.0082
+    V8:
+      res: 0.0063
+    V9:
+      res: 0.0063
+
+# Magic has no ASAP7 technology, so no .mag views exist to point at.
+CELL_MAGS: []
+CELL_MAGLEFS: []
