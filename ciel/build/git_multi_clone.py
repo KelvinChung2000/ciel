@@ -15,7 +15,7 @@ import os
 import re
 import shutil
 import subprocess
-from typing import Optional
+from typing import List, Optional
 
 from rich.progress import Progress
 
@@ -37,13 +37,23 @@ class Repository(object):
 
         return Self(name, url, path, remote_branch)
 
-    def __init__(self, name, url, path, default_branch="main"):
+    def __init__(
+        self,
+        name,
+        url,
+        path,
+        default_branch="main",
+        blobless: bool = False,
+        sparse_paths: Optional[List[str]] = None,
+    ):
         path = os.path.abspath(path)
 
         self.name = name
         self.url = url
         self.path = path
         self.default_branch = default_branch
+        self.blobless = blobless
+        self.sparse_paths = sparse_paths
 
     def clone_if_not_exist(self, callback=None):
         if os.path.exists(self.path):
@@ -60,8 +70,15 @@ class Repository(object):
 
         callback(0, f"Cloning {self.name} to '{self.path}'…")
 
+        cmd = ["git", "clone", "--progress"]
+        if self.blobless:
+            cmd.append("--filter=blob:none")
+        if self.sparse_paths is not None:
+            cmd.append("--sparse")
+        cmd += [self.url, self.path]
+
         process = subprocess.Popen(
-            ["git", "clone", "--progress", self.url, self.path],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -86,6 +103,13 @@ class Repository(object):
                 buffer += char_read
 
         process.wait()
+
+        if self.sparse_paths is not None:
+            subprocess.check_output(
+                ["git", "sparse-checkout", "set", *self.sparse_paths],
+                cwd=self.path,
+                stderr=subprocess.PIPE,
+            )
 
     def pristine(self):
         subprocess.check_output(
@@ -153,8 +177,15 @@ class Repository(object):
             stderr=subprocess.PIPE,
         )
 
-    def init_submodule(self, submodule: Optional[str] = None, callback=None):
+    def init_submodule(
+        self,
+        submodule: Optional[str] = None,
+        callback=None,
+        blobless: bool = False,
+    ):
         cmd = ["git", "submodule", "update", "--init", "--progress"]
+        if blobless:
+            cmd.append("--filter=blob:none")
         if submodule is not None:
             cmd.append(submodule)
         process = subprocess.Popen(
@@ -197,12 +228,24 @@ class GitMultiClone(object):
         self.progress = progress
 
     def clone(
-        self, repo_url: str, commit: str, default_branch: str = "main"
+        self,
+        repo_url: str,
+        commit: str,
+        default_branch: str = "main",
+        blobless: bool = False,
+        sparse_paths: Optional[List[str]] = None,
     ) -> Repository:
         current_task = self.progress.add_task("", total=100)
         name = os.path.basename(repo_url)
         path = os.path.join(self.folder, name)
-        r = Repository(name, repo_url, path, default_branch=default_branch)
+        r = Repository(
+            name,
+            repo_url,
+            path,
+            default_branch=default_branch,
+            blobless=blobless,
+            sparse_paths=sparse_paths,
+        )
         r.clone_if_not_exist(
             lambda x, y=None: self.progress.update(
                 current_task, completed=x, description=y
