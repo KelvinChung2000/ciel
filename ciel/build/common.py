@@ -16,7 +16,65 @@ import re
 import shutil
 import subprocess
 
+from rich.console import Console
+
+from ciel.common import Version, mkdirp
+from ciel.families import Family
 from ciel.github import GitHubSession
+
+
+def copy_upstream_tree(src: str, dst: str):
+    """
+    Replaces ``dst`` with a copy of ``src``, leaving behind any Git metadata.
+    """
+    try:
+        shutil.rmtree(dst)
+    except FileNotFoundError:
+        pass
+    shutil.copytree(
+        src,
+        dst,
+        ignore=lambda dir, files: (
+            files if ".git" in os.path.split(dir) else [".git", ".DS_Store"]
+        ),
+    )
+
+
+def install_trivial_build(build_directory: str, pdk_root: str, version: str, pdk: str):
+    """
+    Moves the variant directories a trivial build assembled under
+    ``build_directory`` into the version directory for ``version``, backing up
+    any build already sitting there.
+    """
+    console = Console()
+    with console.status("Adding build to list of installed versions…"):
+        family = Family.by_name[pdk]
+
+        version_directory = Version(version, pdk).get_dir(pdk_root)
+        if (
+            os.path.exists(version_directory)
+            and len(os.listdir(version_directory)) != 0
+        ):
+            backup_path = version_directory
+            it = 0
+            while os.path.exists(backup_path) and len(os.listdir(backup_path)) != 0:
+                it += 1
+                backup_path = Version(f"{version}.bk{it}", pdk).get_dir(pdk_root)
+            console.log(
+                f"Build already found at {version_directory}, moving to {backup_path}…"
+            )
+            shutil.move(version_directory, backup_path)
+
+        console.log("Copying…")
+        mkdirp(version_directory)
+
+        for variant in family.variants:
+            variant_build_path = os.path.join(build_directory, variant)
+            variant_install_path = os.path.join(version_directory, variant)
+            if os.path.isdir(variant_build_path):
+                shutil.copytree(variant_build_path, variant_install_path)
+
+    console.log("Done.")
 
 
 def get_backup_path(at_path: str):

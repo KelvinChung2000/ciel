@@ -21,11 +21,10 @@ from concurrent.futures import ThreadPoolExecutor
 from rich.console import Console
 from rich.progress import Progress
 
+from .common import copy_upstream_tree, install_trivial_build
 from .git_multi_clone import GitMultiClone
-from ..families import Family
 from ..github import ihp_repo
 from ..common import (
-    Version,
     get_ciel_dir,
     mkdirp,
 )
@@ -67,51 +66,14 @@ def get_ihp(
 
 def build_ihp(build_directory, ihp_path):
     # """Build"""
-    try:
-        shutil.rmtree(os.path.join(build_directory, "ihp-sg13g2"))
-    except FileNotFoundError:
-        pass
-    shutil.copytree(
+    copy_upstream_tree(
         os.path.join(ihp_path, "ihp-sg13g2"),
         os.path.join(build_directory, "ihp-sg13g2"),
-        ignore=lambda dir, files: (
-            files if ".git" in os.path.split(dir) else [".git", ".DS_Store"]
-        ),
     )
 
 
 def install_ihp(build_directory, pdk_root, version):
-    console = Console()
-    with console.status("Adding build to list of installed versions…"):
-        ihp_sg13g2_family = Family.by_name["ihp-sg13g2"]
-
-        version_directory = Version(version, "ihp-sg13g2").get_dir(pdk_root)
-        if (
-            os.path.exists(version_directory)
-            and len(os.listdir(version_directory)) != 0
-        ):
-            backup_path = version_directory
-            it = 0
-            while os.path.exists(backup_path) and len(os.listdir(backup_path)) != 0:
-                it += 1
-                backup_path = Version(f"{version}.bk{it}", "ihp-sg13g2").get_dir(
-                    pdk_root
-                )
-            console.log(
-                f"Build already found at {version_directory}, moving to {backup_path}…"
-            )
-            shutil.move(version_directory, backup_path)
-
-        console.log("Copying…")
-        mkdirp(version_directory)
-
-        for variant in ihp_sg13g2_family.variants:
-            variant_build_path = os.path.join(build_directory, variant)
-            variant_install_path = os.path.join(version_directory, variant)
-            if os.path.isdir(variant_build_path):
-                shutil.copytree(variant_build_path, variant_install_path)
-
-    console.log("Done.")
+    install_trivial_build(build_directory, pdk_root, version, "ihp-sg13g2")
 
 
 def build(
