@@ -28,6 +28,10 @@ class Family(object):
     # lol no implicitly unwrapped optionals
     default_variant: str = None  # type: ignore
     default_includes: List[str] = None  # type: ignore
+    # Families whose upstream does not sort its collateral into libs.ref/<lib>
+    # ship as a single tree. all_libraries then only records what that tree
+    # contains: neither fetch nor push can address one of them on its own.
+    monolithic: bool = False
 
     def __post_init__(self):
         if self.default_variant is None:

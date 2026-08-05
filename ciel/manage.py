@@ -155,6 +155,9 @@ def fetch(
     for library in library_set:
         if library not in pdk_family.all_libraries:
             raise RuntimeError(f"Unknown library {library}.")
+        if pdk_family.monolithic:
+            # No libs.ref to look under: the whole tree arrives with 'common'.
+            continue
         found = False
         for variant in variants:
             lib_path = os.path.join(version_directory, variant, "libs.ref", library)
