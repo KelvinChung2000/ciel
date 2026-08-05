@@ -1,0 +1,16 @@
+# Cells synthesis may not use, but place-and-route may.
+#
+# The clock buffers are reserved for clock tree synthesis, and the scan flops
+# for a scan insertion the flow does not run -- picked up by dfflibmap they
+# would only tie their scan pins off.
+CLKBUF_X1
+CLKBUF_X2
+CLKBUF_X3
+SDFF_X1
+SDFF_X2
+SDFFR_X1
+SDFFR_X2
+SDFFS_X1
+SDFFS_X2
+SDFFRS_X1
+SDFFRS_X2

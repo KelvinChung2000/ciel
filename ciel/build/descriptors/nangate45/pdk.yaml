@@ -1,0 +1,130 @@
+# The PDK layer of nangate45, hand-written against the descriptor format
+# specified in docs/superpowers/specs/2026-08-05-pdk-descriptor-format.md.
+#
+# nangate45 has never shipped a config.tcl: it is an OpenROAD Flow Scripts
+# platform, and the values below are the ones its config.mk and its platform
+# Tcl fragments (grid_strategy-M1-M4-M7.tcl, fastroute.tcl, setRC.tcl,
+# make_tracks.tcl, tapcell.tcl) hand to OpenROAD, restated as LibreLane
+# variables.
+#
+# The PDK describes no manufacturing process: its cell library is deliberately
+# non-manufacturable, and it ships no SPICE models and no Netgen setup. So
+# there is no signoff to run against it beyond the KLayout rule deck it does
+# carry, and a flow on this PDK gates Magic stream-out, Magic DRC and LVS off.
+# 'meta.capabilities' records the same thing, but LibreLane does not act on it.
+#
+# Neither Magic nor Netgen is configured here at all -- see the note beside
+# where their variables would be.
+meta:
+  format: 1
+  family: nangate45
+  variant: nangate45
+  scls:
+  - NangateOpenCellLibrary
+  capabilities:
+  - klayout-drc
+  - rcx
+
+STD_CELL_LIBRARY: NangateOpenCellLibrary
+
+# The rails the standard cells carry, and the nets they belong to.
+VDD_PIN: VDD
+GND_PIN: VSS
+
+# No Magic technology file pairing and no Netgen setup ship with this PDK, so
+# KLayout is the only tool that can write a GDSII for it.
+PRIMARY_GDSII_STREAMOUT_TOOL: klayout
+
+# Routing. metal1 is left to the power rails, which is what ORFS'
+# MIN_ROUTING_LAYER says; metal10 is the top of the stack.
+RT_MIN_LAYER: metal2
+RT_MAX_LAYER: metal10
+
+# IO pins go on the two layers ORFS' IO_PLACER_H/IO_PLACER_V name. metal5 runs
+# horizontally and metal6 vertically in the technology LEF.
+IO_PIN_H_LAYER: metal5
+IO_PIN_V_LAYER: metal6
+
+# One entry per routing layer, in stack order (metal1 through metal10). ORFS'
+# fastroute.tcl derates metal2-metal3 by half and everything above metal4 by a
+# quarter; metal1 carries no signal routing, so nothing is taken off it.
+GRT_LAYER_ADJUSTMENTS:
+- 0.0
+- 0.5
+- 0.5
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+- 0.25
+
+# The layers OpenROAD estimates wire RC against before routing exists, from
+# setRC.tcl's set_wire_rc. The per-layer resistance and capacitance themselves
+# are deliberately not given as LAYERS_RC/VIAS_R: the technology LEF declares
+# RESISTANCE, CAPACITANCE and EDGECAPACITANCE for every routing layer and
+# RESISTANCE for every cut, and OpenROAD derives the same numbers from those.
+SIGNAL_WIRE_RC_LAYERS:
+- metal3
+CLOCK_WIRE_RC_LAYERS:
+- metal5
+
+# Power distribution, from grid_strategy-M1-M4-M7.tcl: rails on metal1,
+# vertical straps on metal4, horizontal straps on metal7. The spacings are not
+# in the ORFS grid -- it lets pdngen default them -- so they are set here to
+# something comfortably above each layer's minimum spacing.
+PDN_RAIL_LAYER: metal1
+PDN_RAIL_OFFSET: 0
+PDN_VERTICAL_LAYER: metal4
+PDN_VWIDTH: 0.48
+PDN_VSPACING: 1.6
+PDN_VPITCH: 56.0
+PDN_VOFFSET: 2.0
+PDN_HORIZONTAL_LAYER: metal7
+PDN_HWIDTH: 1.4
+PDN_HSPACING: 1.6
+PDN_HPITCH: 30.0
+PDN_HOFFSET: 2.0
+
+# Only read when a design turns PDN_CORE_RING on, which no ORFS nangate45
+# design does. Sized off the strap widths above.
+PDN_CORE_RING_VWIDTH: 1.6
+PDN_CORE_RING_HWIDTH: 1.6
+PDN_CORE_RING_VSPACING: 1.6
+PDN_CORE_RING_HSPACING: 1.6
+PDN_CORE_RING_VOFFSET: 1.6
+PDN_CORE_RING_HOFFSET: 1.6
+
+# KLayout. The .lyt embeds its own LEF/DEF layer map, so no KLAYOUT_DEF_LAYER_MAP
+# is given and the embedded one is used.
+KLAYOUT_TECH: pdk_dir::FreePDK45.lyt
+KLAYOUT_PROPERTIES: pdk_dir::FreePDK45.lyp
+
+# The rules are the PDK's own deck, drc/FreePDK45.lydrc. It names its input and
+# its report '$in_gds' and '$report_file', which is what ORFS passes it and not
+# what LibreLane's generic KLayout DRC runner passes, so KLAYOUT_DRC_RUNSET
+# points at a wrapper that renames the two and evaluates the deck in place. The
+# deck itself is never edited, and the wrapper is handed its path here because
+# a runset has no other way to learn where it was installed.
+#
+# 'deck' is written 'ref::' rather than 'pdk_dir::' because a KLAYOUT_DRC_OPTION
+# is a string and 'pdk_dir::' is the glob-expanding 'refg::', which resolves to
+# a one-element list no string will accept.
+KLAYOUT_DRC_RUNSET: pdk_dir::libs.tech/librelane/freepdk45_drc.drc
+KLAYOUT_DRC_OPTIONS:
+  deck: ref::$PDKPATH/drc/FreePDK45.lydrc
+
+# No MAGICRC, MAGIC_TECH, MAGIC_PDK_SETUP or NETGEN_SETUP: their absence is
+# what says this PDK supports neither tool, and a Magic or Netgen step that
+# runs anyway refuses with the gate to flip named in the message. The variant
+# does carry a magic.tech -- Tim Edwards' Nangate45 technology file, complete
+# down to its DRC section -- but no .magicrc to load it with and no PDK setup
+# beside it, and writing those here would be standing up support nobody has
+# validated. Netgen has less than that to go on: the PDK ships no SPICE models
+# for an extraction to be compared against.
+
+# One extraction ruleset, covering every corner: the PDK is characterised at a
+# single interconnect corner.
+RCX_RULESETS:
+  nom_*: pdk_dir::rcx_patterns.rules

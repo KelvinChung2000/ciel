@@ -1,0 +1,15 @@
+# Cells that must never be chosen as logic, by synthesis or by any resizer.
+#
+# The physical-only cells have no function to map to, and the two complex gates
+# are the ones OpenROAD Flow Scripts lists in DONT_USE_CELLS to keep routing
+# congestion down.
+TAPCELL_X1
+FILLCELL_X1
+FILLCELL_X2
+FILLCELL_X4
+FILLCELL_X8
+FILLCELL_X16
+FILLCELL_X32
+ANTENNA_X1
+AOI211_X1
+OAI211_X1

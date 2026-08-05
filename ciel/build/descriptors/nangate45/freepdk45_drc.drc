@@ -1,0 +1,35 @@
+# LibreLane's entry point into the FreePDK45 KLayout DRC deck.
+#
+# The deck at drc/FreePDK45.lydrc reads its input layout from '$in_gds' and
+# writes its report to '$report_file', which is what OpenROAD Flow Scripts
+# passes it. LibreLane's generic KLayout DRC runner passes '$input' and
+# '$report' instead. Those are the only two things that differ, so rather than
+# fork three hundred lines of rules to rename a pair of variables, this file
+# renames them and evaluates the deck where it sits: the rules stay the PDK's
+# own, and a rebuild that updates the deck is picked up with no descriptor
+# change.
+#
+# The deck's path arrives as '$deck', set from KLAYOUT_DRC_OPTIONS in pdk.yaml.
+# A runset is handed no other way to learn where the PDK was installed.
+#
+# It is a KLayout macro -- XML with the DRC source in a <text> element -- so
+# reading it means taking that element out and undoing the five XML entity
+# escapes before the source is Ruby again.
+
+raise "'deck' was not given: set it in KLAYOUT_DRC_OPTIONS" if $deck.nil?
+
+$in_gds = $input
+$report_file = $report
+
+macro = File.read($deck)
+source_text = macro[/<text>(.*)<\/text>/m, 1]
+raise "'#{$deck}' has no <text> element to read rules out of" if source_text.nil?
+
+source_text = source_text
+  .gsub("&lt;", "<")
+  .gsub("&gt;", ">")
+  .gsub("&quot;", "\"")
+  .gsub("&apos;", "'")
+  .gsub("&amp;", "&")
+
+eval(source_text)

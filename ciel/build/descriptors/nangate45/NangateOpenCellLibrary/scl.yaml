@@ -1,0 +1,107 @@
+# The standard cell library layer of nangate45: NangateOpenCellLibrary, the
+# 45nm open cell library FreePDK45 is characterised for.
+#
+# One process corner ships (NangateOpenCellLibrary_typical.lib, 1.10V/25C), so
+# there is one timing corner and multi-corner STA runs it alone.
+meta:
+  format: 1
+
+# The library's views. The LEF is the 'mod' macro LEF, which is the one whose
+# cell set matches the GDSII exactly (135 cells, TAPCELL_X1 included) -- the
+# plain macro LEF omits TAPCELL_X1, and KLayout streamout fails on a LEF cell
+# with no GDSII behind it.
+CELL_LEFS:
+- pdk_dir::lef/NangateOpenCellLibrary.macro.mod.lef
+CELL_GDS:
+- pdk_dir::gds/NangateOpenCellLibrary.gds
+CELL_CDLS:
+- pdk_dir::cdl/NangateOpenCellLibrary.cdl
+
+# The technology LEF is not per-corner here: there is one, and it applies to
+# every corner, including the ones RCX_RULESETS names.
+TECH_LEFS:
+  "*": pdk_dir::lef/NangateOpenCellLibrary.tech.lef
+
+DEFAULT_CORNER: nom_tt_025C_1v10
+STA_CORNERS:
+- nom_tt_025C_1v10
+LIB:
+  nom_tt_025C_1v10:
+  - pdk_dir::lib/NangateOpenCellLibrary_typical.lib
+# The only corner there is, so it is also the one a timing violation is real in.
+TIMING_VIOLATION_CORNERS:
+- "*tt*"
+
+SCL_POWER_PINS:
+- VDD
+SCL_GROUND_PINS:
+- VSS
+
+# The single core site, 0.19um x 1.4um.
+PLACE_SITE: FreePDK45_38x28_10R_NP_162NW_34O
+FP_TRACKS_INFO: pdk_dir::libs.tech/librelane/NangateOpenCellLibrary/tracks.info
+# Rails on metal1, 0.17um wide, from ORFS' grid_strategy-M1-M4-M7.tcl.
+PDN_RAIL_WIDTH: 0.17
+
+# TAPCELL_X1 is CLASS CORE WELLTAP and is what ORFS' tapcell.tcl passes as both
+# the tap master and the endcap master, every 120um.
+WELLTAP_CELL: TAPCELL_X1
+ENDCAP_CELL: TAPCELL_X1
+FP_TAPCELL_DIST: 120
+
+# No DIODE_CELL, deliberately. The library does have an antenna cell,
+# ANTENNA_X1, but the LEF gives its input 'ANTENNADIFFAREA 0.0' under a
+# '# unknown' comment: nobody characterised how much diffusion it presents.
+# OpenROAD refuses to insert it on those terms (GRT-0244), and it would be no
+# more use if it did not -- a diode of unknown area cannot be sized against an
+# antenna ratio. Antenna violations on this PDK are for the router to avoid,
+# which is what the technology LEF's antenna rules ask of it.
+
+FILL_CELLS:
+- FILLCELL_X1
+- FILLCELL_X2
+- FILLCELL_X4
+- FILLCELL_X8
+- FILLCELL_X16
+- FILLCELL_X32
+# The library has no decap cells: its spacers are the FILLCELL_X* above.
+DECAP_CELLS: []
+# The cells that are placed abutted, so padding them would only open gaps.
+CELL_PAD_EXCLUDE:
+- FILLCELL_X*
+- TAPCELL_X*
+- ANTENNA_X*
+GPL_CELL_PADDING: 0
+DPL_CELL_PADDING: 0
+
+TRISTATE_CELLS:
+- TBUF_X*
+- TINV_X*
+
+# Synthesis cells, from ORFS' config.mk: ABC_DRIVER_CELL, MIN_BUF_CELL_AND_PORTS
+# and the TIEHI/TIELO pairs.
+SYNTH_DRIVING_CELL: BUF_X1/Z
+SYNTH_BUFFER_CELL: BUF_X1/A/Z
+SYNTH_TIEHI_CELL: LOGIC1_X1/Z
+SYNTH_TIELO_CELL: LOGIC0_X1/Z
+SYNTH_EXCLUDED_CELL_FILE: pdk_dir::libs.tech/librelane/NangateOpenCellLibrary/synth_exclude.cells
+PNR_EXCLUDED_CELL_FILE: pdk_dir::libs.tech/librelane/NangateOpenCellLibrary/pnr_exclude.cells
+
+# The dedicated clock buffers, which synthesis is kept away from so that clock
+# tree synthesis has them to itself.
+CTS_ROOT_BUFFER: CLKBUF_X3
+CTS_CLK_BUFFERS:
+- CLKBUF_X3
+- CLKBUF_X2
+- CLKBUF_X1
+
+# Constraints. OUTPUT_CAP_LOAD is ORFS' ABC_LOAD_IN_FF, four BUF_X1 input pins.
+# The rest are the usual proportions for a 45nm node; the liberty's own
+# default_max_transition (0.198535ns) is left to apply where a constraint is
+# not given here.
+OUTPUT_CAP_LOAD: 3.898
+MAX_FANOUT_CONSTRAINT: 10
+CLOCK_UNCERTAINTY_CONSTRAINT: 0.05
+CLOCK_TRANSITION_CONSTRAINT: 0.1
+TIME_DERATING_CONSTRAINT: 5
+IO_DELAY_CONSTRAINT: 20

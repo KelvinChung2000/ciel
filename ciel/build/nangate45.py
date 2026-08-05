@@ -49,6 +49,13 @@ from ..common import (
 # so the clone is blobless and narrowed to that directory.
 PLATFORM_PATH = os.path.join("flow", "platforms", "nangate45")
 
+# nangate45's LibreLane descriptors, which ship with ciel rather than with the
+# platform: OpenROAD-flow-scripts describes the platform in config.mk and a
+# handful of Tcl fragments, and nothing upstream knows what a pdk.yaml is.
+# Copied into the variant's libs.tech/librelane so that an installed nangate45
+# is configured for LibreLane the moment it is fetched.
+DESCRIPTOR_PATH = os.path.join(os.path.dirname(__file__), "descriptors", "nangate45")
+
 
 def get_orfs(version, build_directory, jobs=1, repo_path=None) -> str:
     try:
@@ -90,6 +97,13 @@ def build_nangate45(build_directory, orfs_path):
         )
     copy_upstream_tree(platform_path, variant_directory)
     make_descriptor_dir(variant_directory, "nangate45")
+    # Over the README make_descriptor_dir just wrote, which is why this is a
+    # merge into the directory and not a replacement of it.
+    shutil.copytree(
+        DESCRIPTOR_PATH,
+        os.path.join(variant_directory, "libs.tech", "librelane"),
+        dirs_exist_ok=True,
+    )
 
 
 def install_nangate45(build_directory, pdk_root, version):
