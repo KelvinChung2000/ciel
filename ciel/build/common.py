@@ -23,6 +23,17 @@ from ciel.families import Family
 from ciel.github import GitHubSession
 
 
+def get_clone_directory(build_directory: str) -> str:
+    """
+    Where a trivial build puts the repositories it clones.
+
+    They live one level below the build directory so that a repository can
+    share its name with a variant without the two colliding — which on a
+    case-insensitive filesystem includes ``GT2N`` and ``gt2n``.
+    """
+    return os.path.join(build_directory, "repos")
+
+
 def copy_upstream_tree(src: str, dst: str):
     """
     Replaces ``dst`` with a copy of ``src``, leaving behind any Git metadata.
@@ -38,6 +49,31 @@ def copy_upstream_tree(src: str, dst: str):
             files if ".git" in os.path.split(dir) else [".git", ".DS_Store"]
         ),
     )
+
+
+def make_descriptor_dir(variant_directory: str, variant: str):
+    """
+    Creates ``<variant_directory>/libs.tech/librelane``, which is where
+    open_pdks installs a PDK's LibreLane configuration and so where a PDK
+    built outside open_pdks should carry its own.
+
+    The directory is given a README because push tarballs files and not
+    directories: an empty one would not survive a push/fetch round trip, and
+    fetch tells an installed version from a missing one by looking for
+    libs.tech.
+    """
+    descriptor_dir = os.path.join(variant_directory, "libs.tech", "librelane")
+    mkdirp(descriptor_dir)
+    with open(os.path.join(descriptor_dir, "README.md"), "w") as f:
+        f.write(
+            f"""# LibreLane configuration for `{variant}`
+
+This is where LibreLane looks for `{variant}`'s PDK configuration, matching
+where open_pdks installs it for the PDKs it builds. ciel's build for
+`{variant}` creates the directory; the configuration itself is added
+alongside this file.
+"""
+        )
 
 
 def install_trivial_build(build_directory: str, pdk_root: str, version: str, pdk: str):

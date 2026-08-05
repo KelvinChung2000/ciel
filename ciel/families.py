@@ -14,7 +14,7 @@
 from dataclasses import dataclass
 from typing import Iterable, List, Dict, Optional, Set, ClassVar
 
-from .github import RepoInfo, opdks_repo, ihp_repo
+from .github import RepoInfo, opdks_repo, ihp_repo, orfs_repo
 
 
 @dataclass
@@ -127,4 +127,14 @@ Family.by_name["ihp-sg13g2"] = Family(
         "sg13g2_stdcell",
     ],
     repo=ihp_repo,
+)
+Family.by_name["nangate45"] = Family(
+    name="nangate45",
+    variants=["nangate45"],
+    all_libraries=[
+        "NangateOpenCellLibrary",
+        "fakeram45",
+    ],
+    repo=orfs_repo,
+    monolithic=True,
 )

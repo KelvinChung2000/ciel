@@ -60,6 +60,11 @@ ihp_repo = RepoInfo(
     os.getenv("IHP_REPO_NAME", "IHP-Open-PDK"),
 )
 
+orfs_repo = RepoInfo(
+    os.getenv("ORFS_REPO_OWNER", "The-OpenROAD-Project"),
+    os.getenv("ORFS_REPO_NAME", "OpenROAD-flow-scripts"),
+)
+
 
 class GitHubSession(httpx.Client):
     class Token(object):
