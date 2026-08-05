@@ -62,6 +62,40 @@ In its current inception, ciel supports builds of **sky130** and **gf180mcu** PD
 
 Builds for sky130 and gf180mcu are identified by their [**open_pdks**](https://github.com/rtimothyedwards/open_pdks) commit hashes. Builds for ihp-sg13g2 are identified by their [**IHP-Open-PDK**](https://github.com/ihp-gmbh/ihp-open-pdk) commit hashes.
 
+## PDKs outside the open_pdks format
+
+ciel also builds three predictive, non-manufacturable PDKs that are not
+distributed in the open_pdks format. Their builds are trivial — a copy out of
+an upstream repository, with no autotools step — and each installs a single
+variant that keeps its upstream's own directory layout rather than a
+`libs.ref`/`libs.tech` split:
+
+|family|source|identified by|
+|-|-|-|
+|nangate45|[OpenROAD-flow-scripts](https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts) `flow/platforms/nangate45`|its OpenROAD-flow-scripts commit hash|
+|asap7|[asap7](https://github.com/The-OpenROAD-Project/asap7) and the submodules it pins|its asap7 commit hash|
+|gt2n|[lambdapdk](https://github.com/siliconcompiler/lambdapdk) `lambdapdk/gt2n` and the [GT2N](https://github.com/azadnaeemi/GT2N) revision it names|its lambdapdk commit hash|
+
+The libraries each one ships:
+
+|nangate45|asap7|gt2n|
+|-|-|-|
+|NangateOpenCellLibrary|asap7sc7p5t_28|gt2_6t_w13_{hvt,svt,lvt,ulvt,elvt}|
+|fakeram45|asap7sc6t_26|gt2_6t_w31_{hvt,svt,lvt,ulvt,elvt}|
+|-|asap7_sram_0p0|-|
+
+Because these families are not split into `libs.ref`, `-l`/`--include-libraries`
+does not apply to them: a build or a fetch always brings the whole tree.
+
+asap7's standard cell libraries are checked out sparsely. What is left behind
+is `LIB/CCS`, `Datasheet`, `qrc` and `CDL/xAct3D_extracted` — around 6.4 GiB of
+CCS timing models, browsable datasheets and Cadence collateral that no
+open-source flow reads.
+
+Both asap7 and gt2n ask to be cited in published work that uses them. The
+requests are reproduced in the header of each family's build module,
+`ciel/build/asap7.py` and `ciel/build/gt2n.py`, and in the PDKs' own READMEs.
+
 # Usage
 Ciel requires a so-called **PDK Root**. This PDK root can be anywhere on your computer, but by default it's the folder `~/.ciel` in your home directory. If you have the variable `PDK_ROOT` set, ciel will use that instead. You can also manually override both values by supplying the `--pdk-root` commandline argument.
 
