@@ -65,6 +65,13 @@ orfs_repo = RepoInfo(
     os.getenv("ORFS_REPO_NAME", "OpenROAD-flow-scripts"),
 )
 
+# The submodules of the asap7 superproject are siblings of it under the same
+# owner, so ASAP7_REPO_OWNER redirects those too.
+asap7_repo = RepoInfo(
+    os.getenv("ASAP7_REPO_OWNER", "The-OpenROAD-Project"),
+    os.getenv("ASAP7_REPO_NAME", "asap7"),
+)
+
 
 class GitHubSession(httpx.Client):
     class Token(object):

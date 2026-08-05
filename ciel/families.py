@@ -14,7 +14,7 @@
 from dataclasses import dataclass
 from typing import Iterable, List, Dict, Optional, Set, ClassVar
 
-from .github import RepoInfo, opdks_repo, ihp_repo, orfs_repo
+from .github import RepoInfo, opdks_repo, ihp_repo, orfs_repo, asap7_repo
 
 
 @dataclass
@@ -136,5 +136,16 @@ Family.by_name["nangate45"] = Family(
         "fakeram45",
     ],
     repo=orfs_repo,
+    monolithic=True,
+)
+Family.by_name["asap7"] = Family(
+    name="asap7",
+    variants=["asap7"],
+    all_libraries=[
+        "asap7sc6t_26",
+        "asap7sc7p5t_28",
+        "asap7_sram_0p0",
+    ],
+    repo=asap7_repo,
     monolithic=True,
 )

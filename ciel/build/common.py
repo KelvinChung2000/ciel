@@ -48,6 +48,9 @@ def copy_upstream_tree(src: str, dst: str):
         ignore=lambda dir, files: (
             files if ".git" in os.path.split(dir) else [".git", ".DS_Store"]
         ),
+        # asap7_pdk_r1p7 ships Calibre run directories whose .cgi*db entries
+        # are symlinks to databases that were never committed.
+        ignore_dangling_symlinks=True,
     )
 
 
