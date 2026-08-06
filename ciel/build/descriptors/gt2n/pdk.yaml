@@ -44,11 +44,11 @@ meta:
   - gt2n_stdcells_w31_ulvt
   dbu_per_micron: 2000
   gds_scale: 1
-  # No Magic tech file, no Netgen setup, and no open-source DRC/LVS rule deck:
-  # GT2N ships Synopsys IC Validator runsets only (icv_runset/). Gate
-  # RUN_MAGIC_DRC, RUN_KLAYOUT_DRC, RUN_LVS and RUN_MAGIC_STREAMOUT off in the
-  # design/flow configuration.
-  capabilities: [rcx]
+  # No Magic tech file and no Netgen setup: gate RUN_MAGIC_DRC, RUN_LVS and
+  # RUN_MAGIC_STREAMOUT off in the design/flow configuration. DRC is covered,
+  # by the KLayout deck named under KLAYOUT_DRC_RUNSET below, so
+  # RUN_KLAYOUT_DRC need not be.
+  capabilities: [rcx, klayout-drc]
 
 STD_CELL_LIBRARY: gt2n_stdcells_w31_lvt
 
@@ -70,6 +70,23 @@ KLAYOUT_TECH: pdk_dir::lambdapdk/base/setup/klayout/gt2n.lyt
 KLAYOUT_PROPERTIES: pdk_dir::lambdapdk/base/setup/klayout/gt2n.lyp
 # KLAYOUT_DEF_LAYER_MAP is deliberately unset: gt2n.lyt already carries the
 # LEF/DEF layer map inline, and passing --lym would clear it.
+#
+# The rule deck is a port of GT2N's own IC Validator runset (icv_runset/) to
+# the KLayout DRC language -- written against the layer numbers gt2_main.drc.rs
+# assigns rather than against any .lyt, so it needs no layer map of its own. It
+# reads $input, $topcell, $report and $threads, which is exactly what
+# LibreLane's generic KLayout DRC runner passes, so there is no wrapper and no
+# KLAYOUT_DRC_OPTIONS to set.
+#
+# Three of its rules deviate from the ICV source, and each says so at the rule:
+# the corner-to-corner checks are diagonal-only, GATE.2 checks only the lower
+# bound on gate pitch, and SDCON.2 is net-blind where ICV restricts it to
+# different nets. A GT2N design does not come out of this deck clean -- the
+# library and the runset disagree about SDCON's extension past ACT, and the
+# cells' M1 half-pitch grid admits spacings the runset forbids -- so a flow
+# that wants a GDS out of this PDK sets ERROR_ON_KLAYOUT_DRC false, as
+# librelane/examples/spm/gt2n.yaml does.
+KLAYOUT_DRC_RUNSET: pdk_dir::libs.tech/librelane/gt2n_drc.drc
 
 # One corner. The GT2N release notes describe three process corners as "under
 # development"; only tt is characterised today, at 0.7 V / 25 C.

@@ -1,0 +1,568 @@
+# GT2N design rule check, KLayout edition.
+#
+# A port of the PDK's own Synopsys IC Validator runset (icv_runset/, 24 rule
+# files plus gt2_main.drc.rs) to the KLayout DRC language, so that a LibreLane
+# flow on GT2N has a signoff DRC it can actually run. Rule identifiers and
+# descriptions are reproduced verbatim from the ICV source, so a violation
+# reported here names the same rule the vendor runset would have named.
+#
+# The ICV runset is BSD 3-Clause licensed:
+#
+#   Copyright 2025 Piyush Kumar, Dongwon Jang, Da Eun Shim, Azad Naeemi, or
+#   Georgia Institute of Technology
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions are met:
+#
+#   1. Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+#   2. Redistributions in binary form must reproduce the above copyright
+#   notice, this list of conditions and the following disclaimer in the
+#   documentation and/or other materials provided with the distribution.
+#
+#   3. Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from this
+#   software without specific prior written permission.
+#
+#   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+#   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+#   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+#   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+#   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+#   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+#   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+#   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+#   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+#   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#   POSSIBILITY OF SUCH DAMAGE.
+#
+# ---------------------------------------------------------------------------
+# How the ICV primitives are read here
+# ---------------------------------------------------------------------------
+# ICV's directional checks name the axis they measure along; KLayout's name the
+# orientation of the edges they measure between. The two are perpendicular:
+# a HORIZONTAL measurement is the distance between vertical (90 degree) edges,
+# and a VERTICAL one the distance between horizontal (0 degree) edges. Every
+# check below therefore pairs a KLayout width/space/enclosing check with a
+# with_angle() filter on the resulting edge pairs, and HORIZONTAL/VERTICAL are
+# bound to 90/0 once, at the top, rather than restated at each rule.
+#
+# ICV 'extension = NONE' is KLayout's projection metric and 'extension = RADIAL'
+# is euclidian. Every layer in this PDK is Manhattan.
+#
+# Rules the ICV source leaves commented out, or leaves with an empty body, are
+# carried over in the same state and marked. Where the port narrows or widens a
+# rule's meaning, the deviation is stated at the rule.
+# ---------------------------------------------------------------------------
+
+if $topcell
+  source($input, $topcell)
+else
+  source($input)
+end
+
+report("GT2N DRC", $report)
+
+threads($threads.to_i) if $threads
+
+# Hierarchical evaluation. The layouts this runs on are standard-cell arrays
+# where the same handful of cells repeat thousands of times, and flat mode
+# spends all of its time re-checking identical cell interiors.
+deep
+
+# A measurement "in the horizontal direction" is taken between vertical edges,
+# and vice versa. These are the angles handed to with_angle().
+HORIZONTAL = 90
+VERTICAL = 0
+
+# One database unit, 0.5 nm. Used to turn KLayout's strictly-less-than width
+# comparison into a less-than-or-equal one: every dimension in this PDK is an
+# integer number of nanometres, so 'width < d + DBU' is 'width <= d'.
+DBU = 0.0005
+
+# ---------------------------------------------------------------------------
+# Layers, as gt2_main.drc.rs assigns them. Datatype 0 throughout.
+# ---------------------------------------------------------------------------
+nw = input(1, 0)
+act = input(2, 0)
+gate = input(3, 0)
+dummy = input(4, 0)
+gcut = input(5, 0)
+nsel = input(6, 0)
+psel = input(7, 0)
+bpr = input(8, 0)
+vbpr = input(9, 0)
+sdcon = input(10, 0)
+vsd = input(11, 0)
+vg = input(12, 0)
+m0 = input(20, 0)
+v0 = input(22, 0)
+m1 = input(25, 0)
+v1 = input(27, 0)
+m2 = input(30, 0)
+v2 = input(32, 0)
+m3 = input(35, 0)
+v3 = input(37, 0)
+m4 = input(40, 0)
+v4 = input(42, 0)
+m5 = input(45, 0)
+v5 = input(47, 0)
+m6 = input(50, 0)
+elvt = input(94, 0)
+ulvt = input(95, 0)
+svt = input(96, 0)
+hvt = input(97, 0)
+sramvt = input(98, 0)
+
+# NW is assigned by the ICV runset but carries no rule in it. Naming it here
+# keeps the layer table complete and readable; this line is what stops a linter
+# (or a reader) from thinking the assignment was forgotten.
+nw.forget
+
+# ---------------------------------------------------------------------------
+# Primitives
+# ---------------------------------------------------------------------------
+
+# internal1(l, < d, direction) -- minimum width along one axis.
+def dir_width(l, d, ang)
+  l.width(d, projection).with_angle(ang)
+end
+
+# internal1(l, == d, direction) followed by 'l not check' -- exact width.
+#
+# ICV's '== d' check returns the parts of the layer whose width along the axis
+# is exactly d, and the rule body subtracts them from the layer, so a violation
+# is any part that is too narrow *or* too wide. The same set is built here from
+# two width checks: the region between edge pairs closer than d + 1 dbu is
+# everything with width <= d, and taking away the region between edge pairs
+# closer than d leaves exactly the parts at width d. What is left of the layer
+# after subtracting that is the violation, at the same granularity ICV reports
+# -- parts of polygons, not whole ones.
+def exact_width(l, d, ang)
+  at_most_d = l.width(d + DBU, projection).with_angle(ang).polygons
+  less_than_d = l.width(d, projection).with_angle(ang).polygons
+  l - (at_most_d - less_than_d)
+end
+
+# external1(l, < d, direction, extension) -- minimum spacing along one axis.
+def dir_space(l, d, ang, metric)
+  l.space(d, metric).with_angle(ang)
+end
+
+# external2(a, b, < d, direction, extension) -- minimum separation of two layers.
+def dir_separation(a, b, d, ang, metric)
+  a.separation(b, d, metric).with_angle(ang)
+end
+
+# enclose(inner, outer, < d, direction) -- minimum enclosure along one axis.
+def dir_enclosure(inner, outer, d, ang)
+  outer.enclosing(inner, d, projection).with_angle(ang)
+end
+
+# external_corner1(l, < d, type = CONVEX_TO_CONVEX) -- corner-to-corner spacing.
+#
+# DEVIATION, and the evidence for it. ICV measures between convex corner
+# vertices. Read literally that also measures across a straight gap, because
+# two shapes side by side have convex corners facing each other at exactly the
+# edge-to-edge distance -- and read that way the rule contradicts both the rest
+# of the runset and the cell library the runset was written for. M1.3 permits
+# 14 nm between M1 wires where M1.5 would then demand 16 nm between their
+# corners; and every GT2N standard cell that stacks V0 on two adjacent M0
+# tracks puts them 12 nm apart on the same M1 track, where V0.6 would then
+# demand 18 nm -- gt2_6t_buf_x4 and gt2_6t_dffasync_x1 among many others.
+#
+# What the corner rule is for is the diagonal proximity the axis-aligned
+# spacing rules cannot see, so that is what is checked: a euclidian spacing
+# check, which does measure diagonally, with the parts a projection check also
+# finds taken out -- those being exactly the parts with edge-on-edge overlap,
+# which belong to the directional rules.
+#
+# The cost is that straight-gap spacing goes unchecked on the via layers, where
+# ICV leaves V0.7, V1.5, V2.5, V3.5, V4.5 and V5.5 -- its "minimum spacing
+# between Vn" rules -- unwritten. This deck does not invent them.
+def corner_space(l, d)
+  l.space(d, euclidian).polygons.not_interacting(l.space(d, projection).polygons)
+end
+
+# angle_edge(l, angles = a) -- the edges of l at one orientation.
+def dir_edges(l, ang)
+  l.edges.with_angle(ang)
+end
+
+# not_inside_touching_edge(e, m) -- the parts of edge collection e that do not
+# lie along an edge of m. Edge-on-edge subtraction leaves precisely the
+# non-coincident portions; a portion that runs along m's boundary is removed
+# whether or not it covers the whole of m's edge.
+def unaligned_edges(e, m)
+  e - m.edges
+end
+
+# ---------------------------------------------------------------------------
+# BPR -- backside power rail
+# ---------------------------------------------------------------------------
+exact_width(bpr, 0.032, VERTICAL).output("BRP.1 : BPR vertical width = 32 nm")
+dir_space(bpr, 0.112, VERTICAL, projection).output("BPR.2 : Minimum vertical spacing between BPR layers >= 112 nm")
+
+# 10 micrometres, not nanometres: the ICV source writes '< 10' where every
+# other distance in the runset is written in thousandths, and the rule it is
+# labelled with is continuity. Any horizontal break in a rail shorter than
+# 10 um is the violation, which on a die smaller than that means any break at
+# all. Carried over as written.
+dir_space(bpr, 10.0, HORIZONTAL, projection).output("BPR.3 : BPR must be continuous")
+bpr.non_rectangles.output("BPR.4 : BPR may not bend")
+
+# ---------------------------------------------------------------------------
+# VBPR -- via between BPR and SDCON
+# ---------------------------------------------------------------------------
+exact_width(vbpr, 0.011, VERTICAL).output("VBPR.1 : Vertical width of VBPR =11 nm")
+exact_width(vbpr, 0.016, HORIZONTAL).output("VBPR.2 : HORIZONTAL width of VBPR =16 nm")
+vbpr.overlapping(gcut).output("VBPR.3 : VBPR must not interact with GCUT")
+vbpr.not_inside(sdcon).output("VBPR.4 : VBPR may not lie outside SDCON")
+
+# ---------------------------------------------------------------------------
+# GATE
+# ---------------------------------------------------------------------------
+exact_width(gate, 0.014, HORIZONTAL).output("GATE.1 : Exact horizontal width of GATE = 14 nm")
+
+# DEVIATION. The ICV rule subtracts the gate-patterned region from the whole
+# layer extent, which makes every part of the die that is not covered by
+# 28 nm-pitch gate a violation -- its own authors note it "may give false DRC
+# errors if the gates are not aligned", and on a placed design the empty space
+# between rows is most of the area. What the rule is protecting is the pitch,
+# so the half of it that can be checked without flagging legal empty space is
+# checked: horizontal gate spacing below 28 nm. Spacing above 28 nm is not
+# flagged, which the ICV formulation would have done.
+dir_space(gate, 0.028, HORIZONTAL, projection).output("GATE.2 : Exact horizontal spacing of GATE = 28 nm")
+
+# GATE.3 Gate must be continous -- not written in the ICV source either.
+
+gate.non_rectangles.output("GATE.4 : GATE must not bend")
+
+# ---------------------------------------------------------------------------
+# DUMMY
+# ---------------------------------------------------------------------------
+exact_width(dummy, 0.014, HORIZONTAL).output("DUMMY.1 : Exact horizontal width of DUMMY = 14 nm")
+
+# include_touch = NONE: a shape that only touches GATE counts as not
+# interacting with it, which is KLayout's overlapping/not_overlapping pair
+# rather than interacting/not_interacting.
+dummy.not_overlapping(gate).output("DUMMY.2 : DUMMY may not exist without GATE")
+dummy.non_rectangles.output("DUMMY.3 : DUMMY may not bend")
+
+# include_touch = ALL: coincident edges count as inside, which is what
+# KLayout's not_inside already means. Reported per polygon rather than per
+# offending part.
+dummy.not_inside(gate).output("DUMMY.4 : DUMMY should exactly overlap GATE in the horizontal direction")
+
+# DUMMY.5 is an unfinished comment in the ICV source ("DUMMY horizo") with no
+# rule behind it.
+
+# ---------------------------------------------------------------------------
+# GCUT -- gate cut
+# ---------------------------------------------------------------------------
+dir_width(gcut, 0.010, VERTICAL).output("GCUT.1 : GCUT vertical width >= 10 nm")
+dir_width(gcut, 0.042, HORIZONTAL).output("GCUT.2 : GCUT horizontal length >= 42 nm")
+
+# GCUT.3 GCUT horizontal spacing -- unwritten in the ICV source.
+# GCUT.4 GCUT vertical spacing -- unwritten in the ICV source.
+
+gcut.non_rectangles.output("GCUT.5 : GCUT may not bend")
+gcut.not_overlapping(gate).output("GCUT.6 : GCUT may not exist without GATE")
+
+# The interacting portion is the violation: a GCUT vertical edge that reaches
+# into, or lands on, the part of GATE that is a real gate rather than a dummy.
+dir_edges(gcut, 90).interacting(gate - dummy).output("GCUT.7 : GCUT vertical edge may not lie inside or coincide with GATE vertical edge")
+gcut.interacting(act).output("GCUT.8 : GCUT may not interact with ACT")
+dir_separation(gcut, act, 0.010, VERTICAL, projection).output("GCUT.ACT.1 : Vertical spacing between GCUT and ACT >= 10 nm")
+
+# ---------------------------------------------------------------------------
+# VG -- via to gate
+# ---------------------------------------------------------------------------
+exact_width(vg, 0.014, HORIZONTAL).output("VG.1 : Exact horizontal width of VG = 14 nm")
+exact_width(vg, 0.012, VERTICAL).output("VG.2 : Exact vertical width of VG = 12 nm")
+vg.interacting(gcut + dummy).output("VG.3 : VG must not interact with GCUT or DUMMY")
+vg.not_overlapping(gate).output("VG.4 : VG may not exist without GATE")
+vg.not_inside(gate).output("VG.5 : VG must completely lie inside GATE and its vertical edges must coincide with those of GATE")
+
+# VG.6 vertical spacing between VG -- unwritten in the ICV source.
+
+vg.non_rectangles.output("VG.7 : VG must be rectangle")
+
+# VG.GCUT.1 vertical spacing between VG and GCUT -- unwritten in the ICV source.
+
+vg.not_inside(m0).output("VG.M0.1 : VG must completely lie inside M0")
+dir_enclosure(vg, m0, 0.004, HORIZONTAL).output("VG.M0.2 : VG enclosure by M0 on two opposite sides in the horizontal direction: minimum 4 nm")
+
+# VG.M0.3 VG horizontal edges must align with M0 -- unwritten in the ICV
+# source, which notes it may be redundant.
+
+dir_separation(vg, act, 0.006, VERTICAL, euclidian).output("VG.ACT.1 : VG and ACT vertical spacing >= 6 nm")
+
+# ---------------------------------------------------------------------------
+# ACT -- active
+# ---------------------------------------------------------------------------
+dir_width(act, 0.008, VERTICAL).output("ACT.1 : Minimum vertical width of ACT >= 8 nm")
+dir_width(act, 0.084, HORIZONTAL).output("ACT.2 : Minimum horizontal width of ACT >= 84 nm")
+dir_space(act, 0.030, VERTICAL, euclidian).output("ACT.3 : Vertical spacing between ACT >= 30 nm")
+
+# ACT.4 : ACT should be continuous -- unwritten in the ICV source.
+#
+# ACT.5 : ACT should not bend -- commented out in the ICV source, kept
+# commented out here:
+#
+#   act.non_rectangles.output("ACT.5 : ACT should not bend")
+
+dir_edges(act, 90).not_interacting(dummy).output("ACT.6 : ACT must end inside a DUMMY layer")
+dir_separation(act, bpr, 0.010, VERTICAL, projection).output("ACT.BPR.1 : Vertical spacing between ACT and BPR >= 10 nm")
+
+# ---------------------------------------------------------------------------
+# NSEL / PSEL -- well selects
+# ---------------------------------------------------------------------------
+dir_width(nsel, 0.072, VERTICAL).output("NSEL.1 : Minimum vertical width of NSEL >= 72 nm")
+dir_width(nsel, 0.084, HORIZONTAL).output("NSEL.2 : Minimum horizontal width of NSEL >= 84 nm")
+dir_enclosure(act, nsel, 0.015, VERTICAL).output("NSEL.3 : Minimum enclosure of ACT by NSEL in the vertical direction >= 15 nm")
+
+dir_width(psel, 0.072, VERTICAL).output("PSEL.1 : Minimum vertical width of PSEL >= 72 nm")
+dir_width(psel, 0.084, HORIZONTAL).output("PSEL.2 : Minimum horizontal width of PSEL >= 84 nm")
+dir_enclosure(act, psel, 0.015, VERTICAL).output("PSEL.3 : Minimum enclosure of ACT by PSEL in the vertical direction >= 15 nm")
+
+nsel.overlapping(psel).output("NSEL.PSEL.1 : NSEL and PSEL should not overlap")
+
+# ---------------------------------------------------------------------------
+# Threshold-voltage implants
+# ---------------------------------------------------------------------------
+dir_width(elvt, 0.072, VERTICAL).output("ELVT.1 : Minimum vertical width of ELVT >= 72 nm")
+dir_width(elvt, 0.014, HORIZONTAL).output("ELVT.2 : Minimum horizontal width of ELVT >= 14 nm")
+dir_enclosure(act, elvt, 0.015, VERTICAL).output("ELVT.3 : Minimum enclosure of ACT by ELVT in the vertical direction >= 15 nm")
+
+dir_width(ulvt, 0.072, VERTICAL).output("ULVT.1 : Minimum vertical width of ULVT >= 72 nm")
+dir_width(ulvt, 0.014, HORIZONTAL).output("ULVT.2 : Minimum horizontal width of ULVT >= 14 nm")
+dir_enclosure(act, ulvt, 0.015, VERTICAL).output("ULVT.3 : Minimum enclosure of ACT by ULVT in the vertical direction >= 15 nm")
+
+dir_width(svt, 0.072, VERTICAL).output("SVT.1 : Minimum vertical width of SVT >= 72 nm")
+dir_width(svt, 0.014, HORIZONTAL).output("SVT.2 : Minimum horizontal width of SVT >= 14 nm")
+dir_enclosure(act, svt, 0.015, VERTICAL).output("SVT.3 : Minimum enclosure of ACT by SVT in the vertical direction >= 15 nm")
+
+dir_width(hvt, 0.072, VERTICAL).output("HVT.1 : Minimum vertical width of HVT >= 72 nm")
+dir_width(hvt, 0.014, HORIZONTAL).output("HVT.2 : Minimum horizontal width of HVT >= 14 nm")
+dir_enclosure(act, hvt, 0.015, VERTICAL).output("HVT.3 : Minimum enclosure of ACT by HVT in the vertical direction >= 15 nm")
+
+dir_width(sramvt, 0.072, VERTICAL).output("SRAMVT.1 : Minimum vertical width of SRAMVT >= 72 nm")
+dir_width(sramvt, 0.014, HORIZONTAL).output("SRAMVT.2 : Minimum horizontal width of SRAMVT >= 14 nm")
+dir_enclosure(act, sramvt, 0.015, VERTICAL).output("SRAMVT.3 : Minimum enclosure of ACT by SRAMVT in the vertical direction >= 15 nm")
+
+(elvt.overlapping(ulvt + svt + hvt + sramvt) +
+ ulvt.overlapping(svt + hvt + sramvt) +
+ svt.overlapping(hvt + sramvt) +
+ hvt.overlapping(sramvt)).output("VT_OVERLAP.1 : VT layers (ELVT, ULVT, SVT, HVT, SRAMVT) should not overlap")
+
+# ---------------------------------------------------------------------------
+# SDCON -- source/drain contact
+# ---------------------------------------------------------------------------
+exact_width(sdcon, 0.016, HORIZONTAL).output("SDCON.1 : Horizontal width of SDCON = 16 nm")
+
+# DEVIATION. ICV restricts this to contacts on different nets, via the
+# connectivity database gt2_main.drc.rs builds, and notes an exception for the
+# BPR connection to VDD/VSS. This deck builds no connectivity, so the check is
+# net-blind: two contacts on the same net closer than 20 nm are reported here
+# and would not be by the vendor runset. See the note in the plan document for
+# what that costs on a real layout.
+dir_space(sdcon, 0.020, VERTICAL, projection).output("SDCON.2 : Vertical (TtT) spacing between SDCON >= 20 nm")
+
+sdcon.non_rectangles.output("SDCON.3 : SDCON may not bend")
+dir_enclosure(act, sdcon, 0.010, VERTICAL).output("SDCON.ACT.1 : Vertical extension of SDCON past ACT >= 10 nm")
+
+# The ICV source checks only the '< 6 nm' half of what is written as an exact
+# rule, and leaves the exact form commented out. Same here.
+dir_separation(sdcon, gate, 0.006, HORIZONTAL, projection).output("SDCON.GATE.1 : Horizonal spacing between SDCON and GATE = 6 nm")
+
+# ---------------------------------------------------------------------------
+# VSD -- via from SDCON to M0
+# ---------------------------------------------------------------------------
+exact_width(vsd, 0.013, HORIZONTAL).output("VSD.1 : Horizontal width of VSD = 13 nm")
+exact_width(vsd, 0.012, VERTICAL).output("VSD.2 : Vertical width of VSD = 12 nm")
+vsd.non_rectangles.output("VSD.3 : VSD must be rectangular")
+vsd.not_inside(sdcon).output("VSD.4 : VSD must not be outside of SDCON")
+vsd.not_inside(m0).output("VSD.5 : VSD must not be outside of M0")
+dir_enclosure(vsd, sdcon, 0.001, HORIZONTAL).output("VSD.SDCON.1 : VSD enclosure by SDCON on opposite sides in horizontal direction >= 1 nm")
+dir_enclosure(vsd, m0, 0.004, HORIZONTAL).output("VSD.M0.1 VSD enclosure by M0 on opposite sides in horizontal direction >= 4 nm")
+
+# ---------------------------------------------------------------------------
+# M0
+# ---------------------------------------------------------------------------
+exact_width(m0, 0.012, VERTICAL).output("M0.1 : Exact Vertical width of M0 = 12 nm")
+dir_width(m0, 0.024, HORIZONTAL).output("M0.2 : Minimum Horizontal width of M0 >= 24 nm")
+dir_space(m0, 0.012, VERTICAL, euclidian).output("M0.3 : Minimum Vertical spacing of M0 >= 12 nm")
+
+# ICV adds intersecting = { }, orientation = {PARALLEL} and look_thru = NONE,
+# which together restrict the check to facing parallel edges -- what the
+# projection metric with an edge-orientation filter already gives.
+dir_space(m0, 0.017, HORIZONTAL, projection).output("M0.4 : Minimum Horizontal (TtT) spacing between two M0 layers on the same track >=17 nm")
+
+corner_space(m0, 0.015).output("M0.5 : M0 corner-to-corner spacing >= 15 nm")
+
+# M0.7 track pattern -- unwritten in the ICV source.
+
+m0.non_rectangles.output("M0.6 : M0 must not bend")
+
+# ---------------------------------------------------------------------------
+# V0
+# ---------------------------------------------------------------------------
+exact_width(v0, 0.014, HORIZONTAL).output("V0.1 : Exact horizontal width of V0 = 14 nm")
+exact_width(v0, 0.012, VERTICAL).output("V0.2 : Exact vertical width of V0 = 12 nm")
+v0.non_rectangles.output("V0.3 : V0 must be rectangle")
+v0.not_inside(m0).output("V0.4 : V0 must not be outside M0")
+v0.not_inside(m1).output("V0.5 : V0 must not be outside M1")
+corner_space(v0, 0.018).output("V0.6 : V0 corner-to-corner spacing >= 18 nm")
+
+# V0.7 : Minimum spacing between V0 on the same M0 track >= 14nm -- the rule
+# exists in the ICV source with an empty body, so there is nothing to port.
+
+dir_enclosure(v0, m0, 0.004, HORIZONTAL).output("V0.M0.1 : V0 enclosure by M0 on opposite sides in horizontal direction >= 4 nm")
+dir_enclosure(v0, m1, 0.004, VERTICAL).output("V0.M1.1 : V0 enclosure by M1 on opposite sides in vertical direction >= 4 nm")
+
+# The ICV source labels these two "V0.7" and "V0.8", reusing the identifier the
+# empty rule above already has. Kept as written.
+unaligned_edges(dir_edges(v0, 90), m1).output("V0.7 : Vertical edges of V0 should align with M1")
+unaligned_edges(dir_edges(v0, 0), m0).output("V0.8 : Horizontal edges of V0 should align with M0")
+
+# ---------------------------------------------------------------------------
+# M1
+# ---------------------------------------------------------------------------
+dir_width(m1, 0.014, HORIZONTAL).output("M1.1 : Horizontal width of M1 >= 14 nm")
+dir_width(m1, 0.028, VERTICAL).output("M1.2 : Vertical length of M1 >= 28 nm")
+dir_space(m1, 0.014, HORIZONTAL, projection).output("M1.3 : Horizontal spacing between M1 layers >= 14 nm")
+dir_space(m1, 0.020, VERTICAL, projection).output("M1.4 : Vertical (TtT) spacing between M1 layers on same track >= 20 nm")
+corner_space(m1, 0.016).output("M1.5 : M1 corner-to-corner spacing >= 16 nm")
+m1.non_rectangles.output("M1.6 : M1 must not bend")
+
+# ---------------------------------------------------------------------------
+# V1
+# ---------------------------------------------------------------------------
+dir_width(v1, 0.014, HORIZONTAL).output("V1.1 : Horizontal width of V1 >= 14 nm")
+dir_width(v1, 0.012, VERTICAL).output("V1.2 : Vertical height of V1 >= 12 nm")
+unaligned_edges(dir_edges(v1, 90), m1).output("V1.3 : Vertical edges of V1 should align with M1")
+unaligned_edges(dir_edges(v1, 0), m2).output("V1.4 : Horizontal edges of V1 should align with M2")
+
+# V1.5 minimum spacing between V1 -- unwritten in the ICV source.
+
+corner_space(v1, 0.018).output("V1.6 : V1 corner-to-corner spacing >= 18 nm")
+v1.not_overlapping(m1).output("V1.7 : V1 must interact with M1")
+v1.not_overlapping(m2).output("V1.8 : V1 must interact with M2")
+dir_enclosure(v1, m1, 0.004, VERTICAL).output("V1.M1.EN : V1 enclosure by M1 on opposite sides in the vertical direction >= 4 nm")
+dir_enclosure(v1, m2, 0.004, HORIZONTAL).output("V1.M2.EN : V1 enclosure by M2 on opposite sides in the horizontal direction >= 4 nm")
+
+# ---------------------------------------------------------------------------
+# M2
+# ---------------------------------------------------------------------------
+dir_width(m2, 0.012, VERTICAL).output("M2.1 : Vertical width of M2 >= 12 nm")
+dir_width(m2, 0.024, HORIZONTAL).output("M2.2 : Horizontal length of M2 >= 24 nm")
+dir_space(m2, 0.012, VERTICAL, projection).output("M2.3 : Vertical spacing between M2 layers >= 12 nm")
+dir_space(m2, 0.017, HORIZONTAL, projection).output("M2.4 : Horizontal (TtT) spacing between M2 layers on same track >= 17 nm")
+corner_space(m2, 0.015).output("M2.5 : M2 corner-to-corner spacing >= 15 nm")
+m2.non_rectangles.output("M2.6 : M2 must not bend")
+
+# ---------------------------------------------------------------------------
+# V2
+# ---------------------------------------------------------------------------
+dir_width(v2, 0.014, HORIZONTAL).output("V2.1 : Horizontal width of V2 >= 14 nm")
+dir_width(v2, 0.012, VERTICAL).output("V2.2 : Vertical height of V2 >= 12 nm")
+unaligned_edges(dir_edges(v2, 90), m3).output("V2.3 : Vertical edges of V2 should align with M3")
+unaligned_edges(dir_edges(v2, 0), m2).output("V2.4 : Horizontal edges of V2 should align with M2")
+
+# V2.5 minimum spacing between V2 -- unwritten in the ICV source.
+
+corner_space(v2, 0.018).output("V2.6 : V2 corner-to-corner spacing >= 18 nm")
+v2.not_overlapping(m2).output("V2.7 : V2 must interact with M2")
+v2.not_overlapping(m3).output("V2.8 : V2 must interact with M3")
+dir_enclosure(v2, m2, 0.004, HORIZONTAL).output("V2.M2.EN : V2 enclosure by M2 on opposite sides in the horizontal direction >= 4 nm")
+dir_enclosure(v2, m3, 0.004, VERTICAL).output("V2.M3.EN : V2 enclosure by M3 on opposite sides in the vertical direction >= 4 nm")
+
+# ---------------------------------------------------------------------------
+# M3
+# ---------------------------------------------------------------------------
+dir_width(m3, 0.014, HORIZONTAL).output("M3.1 : Horizontal width of M3 >= 14 nm")
+dir_width(m3, 0.028, VERTICAL).output("M3.2 : Vertical length of M3 >= 28 nm")
+dir_space(m3, 0.014, HORIZONTAL, projection).output("M3.3 : Horizontal spacing between M3 layers >= 14 nm")
+dir_space(m3, 0.020, VERTICAL, projection).output("M3.4 : Vertical (TtT) spacing between M3 layers on same track >= 20 nm")
+corner_space(m3, 0.016).output("M3.5 : M3 corner-to-corner spacing >= 16 nm")
+m3.non_rectangles.output("M3.6 : M3 must not bend")
+
+# ---------------------------------------------------------------------------
+# V3
+# ---------------------------------------------------------------------------
+dir_width(v3, 0.014, HORIZONTAL).output("V3.1 : Horizontal width of V3 >= 14 nm")
+dir_width(v3, 0.021, VERTICAL).output("V3.2 : Vertical height of V3 >= 21 nm")
+unaligned_edges(dir_edges(v3, 90), m3).output("V3.3 : Vertical edges of V3 should align with M3")
+unaligned_edges(dir_edges(v3, 0), m4).output("V3.4 : Horizontal edges of V3 should align with M4")
+
+# V3.5 minimum spacing between V3 -- unwritten in the ICV source.
+
+corner_space(v3, 0.018).output("V3.6 : V3 corner-to-corner spacing >= 18 nm")
+v3.not_overlapping(m3).output("V3.7 : V3 must interact with M3")
+v3.not_overlapping(m4).output("V3.8 : V3 must interact with M4")
+dir_enclosure(v3, m3, 0.004, VERTICAL).output("V3.M3.EN : V3 enclosure by M3 on opposite sides in the vertical direction >= 4 nm")
+dir_enclosure(v3, m4, 0.004, HORIZONTAL).output("V3.M4.EN : V3 enclosure by M4 on opposite sides in the horizontal direction >= 4 nm")
+
+# ---------------------------------------------------------------------------
+# M4
+# ---------------------------------------------------------------------------
+dir_width(m4, 0.021, VERTICAL).output("M4.1 : Vertical width of M4 >= 21 nm")
+dir_width(m4, 0.042, HORIZONTAL).output("M4.2 : Horizontal length of M4 >= 42 nm")
+dir_space(m4, 0.021, VERTICAL, projection).output("M4.3 : Vertical spacing between M4 layers >= 21 nm")
+dir_space(m4, 0.030, HORIZONTAL, projection).output("M4.4 : Horizontal (TtT) spacing between M4 layers on same track >= 30 nm")
+corner_space(m4, 0.024).output("M4.5 : M4 corner-to-corner spacing >= 24 nm")
+m4.non_rectangles.output("M4.6 : M4 must not bend")
+
+# ---------------------------------------------------------------------------
+# V4
+# ---------------------------------------------------------------------------
+dir_width(v4, 0.021, HORIZONTAL).output("V4.1 : Horizontal width of V4 >= 21 nm")
+dir_width(v4, 0.021, VERTICAL).output("V4.2 : Vertical height of V4 >= 21 nm")
+unaligned_edges(dir_edges(v4, 90), m5).output("V4.3 : Vertical edges of V4 should align with M5")
+unaligned_edges(dir_edges(v4, 0), m4).output("V4.4 : Horizontal edges of V4 should align with M4")
+
+# V4.5 minimum spacing between V4 -- unwritten in the ICV source.
+
+corner_space(v4, 0.027).output("V4.6 : V4 corner-to-corner spacing >= 27 nm")
+v4.not_overlapping(m4).output("V4.7 : V4 must interact with M4")
+v4.not_overlapping(m5).output("V4.8 : V4 must interact with M5")
+dir_enclosure(v4, m4, 0.005, HORIZONTAL).output("V4.M4.EN : V4 enclosure by M4 on opposite sides in the horizontal direction >= 5 nm")
+dir_enclosure(v4, m5, 0.005, VERTICAL).output("V4.M3.EN : V4 enclosure by M5 on opposite sides in the vertical direction >= 5 nm")
+
+# ---------------------------------------------------------------------------
+# M5
+# ---------------------------------------------------------------------------
+dir_width(m5, 0.021, HORIZONTAL).output("M5.1 : Horizontal width of M5 >= 21 nm")
+dir_width(m5, 0.042, VERTICAL).output("M5.2 : Vertical length of M5 >= 42 nm")
+dir_space(m5, 0.021, HORIZONTAL, projection).output("M5.3 : Horizontal spacing between M5 layers >= 21 nm")
+dir_space(m5, 0.030, VERTICAL, projection).output("M5.4 : Vertical (TtT) spacing between M5 layers on same track >= 30 nm")
+corner_space(m5, 0.024).output("M5.5 : M5 corner-to-corner spacing >= 24 nm")
+m5.non_rectangles.output("M5.6 : M5 must not bend")
+
+# ---------------------------------------------------------------------------
+# V5
+# ---------------------------------------------------------------------------
+dir_width(v5, 0.021, HORIZONTAL).output("V5.1 : Horizontal width of V5 >= 21 nm")
+dir_width(v5, 0.038, VERTICAL).output("V5.2 : Vertical height of V5 >= 38 nm")
+unaligned_edges(dir_edges(v5, 90), m5).output("V5.3 : Vertical edges of V5 should align with M5")
+unaligned_edges(dir_edges(v5, 0), m6).output("V5.4 : Horizontal edges of V5 should align with M6")
+
+# V5.5 minimum spacing between V5 -- unwritten in the ICV source.
+
+corner_space(v5, 0.027).output("V5.6 : V5 corner-to-corner spacing >= 27 nm")
+v5.not_overlapping(m5).output("V5.7 : V5 must interact with M5")
+v5.not_overlapping(m6).output("V5.8 : V5 must interact with M6")
+dir_enclosure(v5, m5, 0.006, VERTICAL).output("V5.M5.EN : V5 enclosure by M5 on opposite sides in the vertical direction >= 6 nm")
+dir_enclosure(v5, m6, 0.006, HORIZONTAL).output("V5.M6.EN : V5 enclosure by M6 on opposite sides in the horizontal direction >= 6 nm")
+
+# ---------------------------------------------------------------------------
+# M6
+# ---------------------------------------------------------------------------
+dir_width(m6, 0.038, VERTICAL).output("M6.1 : Vertical width of M6 >= 38 nm")
+dir_width(m6, 0.055, HORIZONTAL).output("M6.2 : Horizontal length of M6 >= 55 nm")
+dir_space(m6, 0.038, VERTICAL, projection).output("M6.3 : Vertical spacing between M6 layers >= 38 nm")
+dir_space(m6, 0.055, HORIZONTAL, projection).output("M6.4 : Horizontal (TtT) spacing between M6 layers on same track >= 55 nm")
+corner_space(m6, 0.045).output("M6.5 : M6 corner-to-corner spacing >= 45 nm")
+m6.non_rectangles.output("M6.6 : M6 must not bend")
